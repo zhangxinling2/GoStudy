@@ -1,0 +1,10 @@
+﻿syntax = "proto3";
+package code;
+option go_package = ".";
+message PersonInfo {
+    string name=1;
+    string sex = 2;
+    float tall=3;
+    int64 weight=4;
+    int64 age=5;
+}
