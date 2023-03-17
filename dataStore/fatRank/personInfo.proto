@@ -1,0 +1,12 @@
+﻿syntax = "proto3";
+package fatRank;
+
+option go_package = ".";
+message PersonalInformation{
+    int64 id=1;
+    string name=2;
+    string sex = 3;
+    float  tall = 4;
+    float weight = 5;
+    int64 age = 6;
+}
