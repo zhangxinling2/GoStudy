@@ -1,7 +1,7 @@
-﻿package learnDB
+package learnDB
 
 import (
-	"GoStudy/code"
+	"GoStudy/learnCode"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -42,9 +42,9 @@ func QueryAllInfo(db *sql.DB) {
 		return
 	}
 
-	persons := []*code.PersonInfo{}
+	persons := []*learnCode.PersonInfo{}
 	for res.Next() {
-		p := &code.PersonInfo{}
+		p := &learnCode.PersonInfo{}
 		res.Scan(&p.Name, &p.Age) //Scan中参数顺序一定与select中的严格匹配
 		persons = append(persons, p)
 	}

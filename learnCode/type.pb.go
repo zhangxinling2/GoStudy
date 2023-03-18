@@ -4,7 +4,7 @@
 // 	protoc        v4.22.0
 // source: type.proto
 
-package code
+package learnCode
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// Verify that this generated code is sufficiently up-to-date.
+	// Verify that this generated learnCode is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
@@ -128,7 +128,7 @@ func file_type_proto_rawDescGZIP() []byte {
 
 var file_type_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_type_proto_goTypes = []interface{}{
-	(*PersonInfo)(nil), // 0: code.PersonInfo
+	(*PersonInfo)(nil), // 0: learnCode.PersonInfo
 }
 var file_type_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type

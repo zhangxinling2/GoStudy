@@ -1,4 +1,4 @@
-﻿package linkdoubledir
+package linkdoubledir
 
 import "testing"
 

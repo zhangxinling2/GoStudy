@@ -1,4 +1,4 @@
-﻿package code
+package learnCode
 
 import (
 	"encoding/base64"

@@ -1,4 +1,4 @@
-﻿package sync
+package learnSync
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-//一个仓库可以让生产者放东西，可以让消费者拿东西，sync.Cond可以用来通知生产者，消费者
+//一个仓库可以让生产者放东西，可以让消费者拿东西，learnSync.Cond可以用来通知生产者，消费者
 type store struct {
 	max   int
 	count int

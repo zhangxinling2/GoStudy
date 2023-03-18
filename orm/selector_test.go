@@ -1,4 +1,4 @@
-﻿package orm
+package orm
 
 import (
 	"github.com/stretchr/testify/require"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTranferName(t *testing.T) {
+func TestTransferName(t *testing.T) {
 	t.Run("TableName", func(t *testing.T) {
 		res := TransferName("TestModel")
 		assert.Equal(t, "test_model", res)
