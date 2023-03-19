@@ -1,6 +1,7 @@
 package learnReflect
 
 import (
+	"errors"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -12,13 +13,23 @@ func Test_structReflect(t *testing.T) {
 	}
 	testCases := []struct {
 		name    string
-		user    User
+		entity  any
 		wantRes map[string]any
 		wantErr error
 	}{
 		{
+			name:    "nil",
+			entity:  nil,
+			wantErr: errors.New("不支持 nil"),
+		},
+		{
+			name:    "*user nil",
+			entity:  (*User)(nil),
+			wantErr: errors.New("不支持0值"),
+		},
+		{
 			name: "user",
-			user: User{
+			entity: &User{
 				Name: "Tom",
 				age:  18,
 			},
@@ -27,10 +38,7 @@ func Test_structReflect(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := structReflect(User{
-				Name: "Tom",
-				age:  18,
-			})
+			res, err := structReflect(tc.entity)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {
 				return
