@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"database/sql"
 	"github.com/stretchr/testify/require"
 	"testing"
 
@@ -79,4 +80,8 @@ func TestSelector_Where(t *testing.T) {
 }
 
 type TestModel struct {
+	Id        int64
+	FirstName string
+	Age       int8
+	LastName  *sql.NullString
 }

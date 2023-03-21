@@ -1,11 +1,10 @@
-﻿package orm
+package orm
 
 import (
 	"context"
 	"fmt"
 	"reflect"
 	"strings"
-	"unicode"
 )
 
 //Selector TableName是为了表名
@@ -127,24 +126,4 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 }
 func (s *Selector[T]) GetMutil(ctx context.Context) ([]*T, error) {
 	return nil, nil
-}
-
-func TransferName(name string) string {
-	var s strings.Builder
-	n := []rune(name)
-	for i := 0; i < len(name); i++ {
-		//判断是否是大写
-		if unicode.IsUpper(n[i]) {
-			//如果是开头的大写那么只转换成小写，如果不是则在前面加个_
-			if i == 0 {
-				s.WriteRune(unicode.ToLower(n[i]))
-			} else {
-				s.WriteByte('_')
-				s.WriteRune(unicode.ToLower(n[i]))
-			}
-		} else {
-			s.WriteRune(n[i])
-		}
-	}
-	return s.String()
 }
