@@ -1,7 +1,7 @@
 package orm
 
 import (
-	"errors"
+	"GoStudy/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -16,7 +16,7 @@ func TestParseModel(t *testing.T) {
 		{
 			name:    "test model",
 			entity:  TestModel{},
-			wantErr: errors.New("只支持一级指针作为输入"),
+			wantErr: errs.ErrPointerOnly,
 		},
 		{
 			name:   "test model ptr",
@@ -40,9 +40,10 @@ func TestParseModel(t *testing.T) {
 			},
 		},
 	}
+	r := &registry{}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := parseModel(tc.entity)
+			m, err := r.get(tc.entity)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {
 				return
