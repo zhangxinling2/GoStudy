@@ -1,6 +1,7 @@
 package orm
 
 import (
+	"GoStudy/internal/errs"
 	"database/sql"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -45,6 +46,8 @@ func TestSelector_Build(t *testing.T) {
 }
 
 func TestSelector_Where(t *testing.T) {
+	db, err := NewDB()
+	require.NoError(t, err)
 	testCases := []struct {
 		name      string
 		builder   QueryBuilder
@@ -53,7 +56,7 @@ func TestSelector_Where(t *testing.T) {
 	}{
 		{
 			name:      "eq where",
-			builder:   (&Selector[TestModel]{}).Where(C("Tom").Eq(18)),
+			builder:   (NewSelector[TestModel](db)).Where(C("Tom").Eq(18)),
 			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE `Tom` = ?;", Args: []any{18}},
 		},
 		{
@@ -65,6 +68,11 @@ func TestSelector_Where(t *testing.T) {
 			name:      "not where",
 			builder:   (&Selector[TestModel]{}).Where(Not(C("Tom").Eq(18).And(C("Jerry").Lt(19)))),
 			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE  NOT ((`Tom` = ?) AND (`Jerry` < ?));", Args: []any{18, 19}},
+		},
+		{
+			name:    "error",
+			builder: (&Selector[TestModel]{}).Where(C("Invalid").Eq(18)),
+			wantErr: errs.NewErrUnknownField("Invalid"),
 		},
 	}
 	for _, tc := range testCases {

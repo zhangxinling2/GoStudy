@@ -1,9 +1,8 @@
 package orm
 
 import (
+	"GoStudy/internal/errs"
 	"context"
-	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -17,19 +16,42 @@ type Selector[T any] struct {
 	sb    *strings.Builder
 	where []Predicate
 	args  []any
+
+	model *model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
+
+	db *DB //设计出DB后，在selector中加入DB
 }
 
+//NewSelector 新建selector实例，自定义db
+func NewSelector[T any](db *DB) *Selector[T] {
+	return &Selector[T]{
+		sb: &strings.Builder{},
+		db: db,
+	}
+}
 func (s *Selector[T]) Build() (*Query, error) {
+	//有了元数据后就可以改造selector
+	var t T //用来解析
+	var err error
+	//定义元数据注册中心后selector使用它的get方法即可
+	//s.model,err=parseModel(&t)
+	s.model, err = s.db.r.get(&t)
+	if err != nil {
+		return nil, err
+	}
+
 	s.sb = &strings.Builder{}
 	sb := s.sb
 	sb.WriteString("SELECT * FROM ")
 	//把表名加进去
 	if s.TableName == "" {
 		//通过反射获取T的名称，需先定义一个T
-		var t T
+		//var t T 获取元数据后可注释掉
 		sb.WriteByte('`')
 		//利用反射获得表名
-		sb.WriteString(TransferName(reflect.TypeOf(t).Name()))
+		//sb.WriteString(TransferName(reflect.TypeOf(t).Name()))
+		//使用元数据解析的表名
+		sb.WriteString(s.model.tableName)
 		sb.WriteByte('`')
 	} else {
 		sb.WriteString(s.TableName)
@@ -48,7 +70,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		//构建where，直接使用不能断言，需要一个函数以expression形式接受之后断言
 		//switch typ := pw.(type) {
 		//}
-		if err := s.buildExpression(pw); err != nil {
+		if err = s.buildExpression(pw); err != nil {
 			return nil, err
 		}
 	}
@@ -76,8 +98,13 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 		return nil
 	//处理expression为列的情况
 	case Column:
+		//有了元数据后就可以校验列存不存在
+		fd, ok := s.model.fields[e.Name]
+		if !ok {
+			return errs.NewErrUnknownField(e.Name)
+		}
 		s.sb.WriteByte('`')
-		s.sb.WriteString(e.Name)
+		s.sb.WriteString(fd.colName)
 		s.sb.WriteByte('`')
 	case Value:
 		//需要先初始化一下arg切片
@@ -117,7 +144,7 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 			s.sb.WriteByte(')')
 		}
 	default:
-		return fmt.Errorf("orm:不支持的表达式 %v", e)
+		return errs.NewErrUnsupportedExpression(expr)
 	}
 	return nil
 }
