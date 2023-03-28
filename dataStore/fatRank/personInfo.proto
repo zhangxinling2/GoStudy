@@ -2,11 +2,20 @@
 package fatRank;
 
 option go_package = ".";
+message PersonalInformationList{
+    repeated PersonalInformation items =1;
+}
 message PersonalInformation{
+    // @gotags: gorm:"primaryKey;column:id"
     int64 id=1;
+    // @gotags: gorm:"column:name"
     string name=2;
+    // @gotags: gorm:"column:sex"
     string sex = 3;
+    // @gotags: gorm:"column:tall"
     float  tall = 4;
+    // @gotags: gorm:"column:weight"
     float weight = 5;
+    // @gotags: gorm:"column:age"
     int64 age = 6;
 }
