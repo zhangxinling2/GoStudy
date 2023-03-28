@@ -8,3 +8,6 @@ type ServeInterface interface {
 	GetFatrate(name string) (*fatRank.PersonRank, error)
 	GetTop() ([]*fatRank.PersonRank, error)
 }
+type RankInitInterface interface {
+	Init() error
+}
