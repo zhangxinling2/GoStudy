@@ -1,0 +1,23 @@
+syntax = "proto3";
+package fatRank;
+
+option go_package = ".";
+import "google/protobuf/timestamp.proto";
+message PersonalMomentList{
+  repeated PersonalMoment items =1;
+}
+
+message PersonalMoment{
+  // @gotags: gorm:"primaryKey;column:id"
+  int64 id = 1;
+  // @gotags: gorm:"column:person_id"
+  int64 personId = 2;
+  // @gotags: gorm:"column:created_time"
+  google.protobuf.Timestamp createdTime = 3;
+  // @gotags: gorm:"column:content"
+  string content = 4;
+  // @gotags: gorm:"column:fatrate"
+  float fatrate = 5;
+  // @gotags: gorm:"column:visible"
+  bool visible = 6;
+}

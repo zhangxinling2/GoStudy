@@ -2,19 +2,33 @@ package main
 
 import (
 	"GoStudy/dataStore/fatRank"
+	"GoStudy/httpServer/gin/practice/moments"
 	"GoStudy/httpServer/httpPratice/frinterface"
-	"gorm.io/gorm"
-	"log"
-
 	"fmt"
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"log"
 	"net/http"
 )
 
+//type PersonalMomentData struct {
+//	Id int64 `json:"id,omitempty" gorm:"primaryKey;column:id"`
+//
+//	PersonId int64 `json:"personId,omitempty" gorm:"column:person_id"`
+//
+//	CreatedTime time.Time `json:"createdTime,omitempty" gorm:"column:created_time"`
+//
+//	Content string `json:"content,omitempty" gorm:"column:content"`
+//
+//	Fatrate float32 `json:"fatrate,omitempty" gorm:"column:fatrate"`
+//
+//	Visible bool `json:"visible,omitempty" gorm:"column:visible"`
+//}
+
 func ConnectDataBase() (*gorm.DB, error) {
-	conn, err := gorm.Open(mysql.Open("root:123456@tcp(127.0.0.1:3306)/mysql"))
+	conn, err := gorm.Open(mysql.Open("root:123456@tcp(127.0.0.1:3306)/mysql?parseTime=true"))
 	if err != nil {
 		log.Fatal("数据库连接失败")
 	}
@@ -26,9 +40,16 @@ func main() {
 		log.Println("连接数据库失败")
 		return
 	}
+	person := fatRank.PersonalInformation{}
+
+	conn.First(&person, 1)
+	if err = conn.AutoMigrate(&fatRank.PersonalMoment{}); err != nil {
+		log.Println("建表失败", err)
+		return
+	}
 	var db frinterface.ServeInterface = NewDbRank(conn, NewFatRateRank())
 	//db := NewDbRank(conn, NewFatRateRank())
-
+	var moment moments.Moments = NewMomentServer(conn, person)
 	if initRank, ok := db.(frinterface.RankInitInterface); ok {
 		if err := initRank.Init(); err != nil {
 			log.Fatal("初始化失败", err)
@@ -94,6 +115,33 @@ func main() {
 		} else {
 			c.JSON(http.StatusOK, frTop)
 		}
+	})
+	r.POST("/moment/release", func(c *gin.Context) {
+		var text string
+		c.BindJSON(&text)
+		if res, err := moment.ReleaseMoment(text); err != nil {
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("无法发布,%v", err))
+			return
+		} else {
+			c.JSON(200, res)
+		}
+	})
+	r.PUT("/moment/del", func(c *gin.Context) {
+		var id int
+		c.BindJSON(&id)
+		if err = moment.DeleteMoment(int64(id)); err != nil {
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("无法删除,%v", err))
+			return
+		}
+		c.JSON(200, "删除成功")
+	})
+	r.GET("/moment", func(c *gin.Context) {
+		mo, err := moment.GetAllMoment()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, fmt.Sprintf("无法得到,%v", err))
+			return
+		}
+		c.JSON(200, mo)
 	})
 	r.Run(":8080")
 	// http.ListenAndServe(":8088", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
