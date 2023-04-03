@@ -5,7 +5,6 @@
 // source: personInfo.proto
 
 package fatRank
-
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -73,21 +72,19 @@ type PersonalInformation struct {
 	unknownFields protoimpl.UnknownFields
 
 	// @gotags: gorm:"primaryKey;column:id"
-	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty" gorm:"primaryKey;column:id"`
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// @gotags: gorm:"column:name"
-	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty" gorm:"column:name"`
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// @gotags: gorm:"column:sex"
-	Sex string `protobuf:"bytes,3,opt,name=sex,proto3" json:"sex,omitempty" gorm:"column:sex"`
+	Sex string `protobuf:"bytes,3,opt,name=sex,proto3" json:"sex,omitempty"`
 	// @gotags: gorm:"column:tall"
-	Tall float32 `protobuf:"fixed32,4,opt,name=tall,proto3" json:"tall,omitempty" gorm:"column:tall"`
+	Tall float32 `protobuf:"fixed32,4,opt,name=tall,proto3" json:"tall,omitempty"`
 	// @gotags: gorm:"column:weight"
-	Weight float32 `protobuf:"fixed32,5,opt,name=weight,proto3" json:"weight,omitempty" gorm:"column:weight"`
+	Weight float32 `protobuf:"fixed32,5,opt,name=weight,proto3" json:"weight,omitempty"`
 	// @gotags: gorm:"column:age"
-	Age int64 `protobuf:"varint,6,opt,name=age,proto3" json:"age,omitempty" gorm:"column:age"`
+	Age int64 `protobuf:"varint,6,opt,name=age,proto3" json:"age,omitempty"`
 }
-func(PersonalInformation)TableName()string{
-	return "person_info"
-}
+
 func (x *PersonalInformation) Reset() {
 	*x = PersonalInformation{}
 	if protoimpl.UnsafeEnabled {
@@ -180,8 +177,13 @@ var file_personInfo_proto_rawDesc = []byte{
 	0x18, 0x04, 0x20, 0x01, 0x28, 0x02, 0x52, 0x04, 0x74, 0x61, 0x6c, 0x6c, 0x12, 0x16, 0x0a, 0x06,
 	0x77, 0x65, 0x69, 0x67, 0x68, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x02, 0x52, 0x06, 0x77, 0x65,
 	0x69, 0x67, 0x68, 0x74, 0x12, 0x10, 0x0a, 0x03, 0x61, 0x67, 0x65, 0x18, 0x06, 0x20, 0x01, 0x28,
-	0x03, 0x52, 0x03, 0x61, 0x67, 0x65, 0x42, 0x03, 0x5a, 0x01, 0x2e, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x03, 0x52, 0x03, 0x61, 0x67, 0x65, 0x32, 0x59, 0x0a, 0x0d, 0x47, 0x65, 0x74, 0x50, 0x65, 0x72,
+	0x73, 0x6f, 0x6e, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x48, 0x0a, 0x08, 0x52, 0x65, 0x67, 0x69, 0x73,
+	0x74, 0x65, 0x72, 0x12, 0x1c, 0x2e, 0x66, 0x61, 0x74, 0x52, 0x61, 0x6e, 0x6b, 0x2e, 0x50, 0x65,
+	0x72, 0x73, 0x6f, 0x6e, 0x61, 0x6c, 0x49, 0x6e, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x69, 0x6f,
+	0x6e, 0x1a, 0x1c, 0x2e, 0x66, 0x61, 0x74, 0x52, 0x61, 0x6e, 0x6b, 0x2e, 0x50, 0x65, 0x72, 0x73,
+	0x6f, 0x6e, 0x61, 0x6c, 0x49, 0x6e, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x22,
+	0x00, 0x42, 0x03, 0x5a, 0x01, 0x2e, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -203,8 +205,10 @@ var file_personInfo_proto_goTypes = []interface{}{
 }
 var file_personInfo_proto_depIdxs = []int32{
 	1, // 0: fatRank.PersonalInformationList.items:type_name -> fatRank.PersonalInformation
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
+	1, // 1: fatRank.GetPersonInfo.Register:input_type -> fatRank.PersonalInformation
+	1, // 2: fatRank.GetPersonInfo.Register:output_type -> fatRank.PersonalInformation
+	2, // [2:3] is the sub-list for method output_type
+	1, // [1:2] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -249,7 +253,7 @@ func file_personInfo_proto_init() {
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_personInfo_proto_goTypes,
 		DependencyIndexes: file_personInfo_proto_depIdxs,

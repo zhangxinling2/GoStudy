@@ -5,6 +5,11 @@ option go_package = ".";
 message PersonalInformationList{
     repeated PersonalInformation items =1;
 }
+service RankService{
+    rpc Register(PersonalInformation) returns (PersonalInformation){}
+    //单次发送，多次接收
+    rpc RegisterPerson(stream PersonalInformation) returns (PersonalInformation){}
+}
 message PersonalInformation{
     // @gotags: gorm:"primaryKey;column:id"
     int64 id=1;
