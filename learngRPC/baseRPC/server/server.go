@@ -4,6 +4,7 @@ import (
 	"GoStudy/dataStore/fatRank"
 	"context"
 	"google.golang.org/grpc"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -15,6 +16,25 @@ type rankServer struct {
 	sync.Mutex
 	persons map[string]*fatRank.PersonalInformation
 	fatRank.UnimplementedRankServiceServer
+}
+
+func (r *rankServer) RegisterPerson(server fatRank.RankService_RegisterPersonServer) error {
+	pis := &fatRank.PersonalInformationList{}
+	for {
+		pi, err := server.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil && err != io.EOF {
+			log.Println(err)
+			return err
+		}
+		pis.Items = append(pis.Items, pi)
+		r.Lock()
+		r.persons[pi.Name] = pi
+		r.Unlock()
+	}
+	return server.SendAndClose(pis)
 }
 
 func (r *rankServer) Register(ctx context.Context, information *fatRank.PersonalInformation) (*fatRank.PersonalInformation, error) {

@@ -8,8 +8,11 @@ message PersonalInformationList{
 service RankService{
     rpc Register(PersonalInformation) returns (PersonalInformation){}
     //单次发送，多次接收
-    rpc RegisterPerson(stream PersonalInformation) returns (PersonalInformation){}
+    rpc RegisterPerson(stream PersonalInformation) returns (PersonalInformationList){}
+
 }
+
+message null {}
 message PersonalInformation{
     // @gotags: gorm:"primaryKey;column:id"
     int64 id=1;
