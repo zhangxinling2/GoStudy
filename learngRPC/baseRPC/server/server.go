@@ -16,6 +16,23 @@ type rankServer struct {
 	sync.Mutex
 	persons map[string]*fatRank.PersonalInformation
 	fatRank.UnimplementedRankServiceServer
+	personCh chan *fatRank.PersonalInformation
+}
+
+func (r *rankServer) regPerson(p *fatRank.PersonalInformation) {
+	r.Lock()
+	defer r.Unlock()
+	r.persons[p.Name] = p
+	r.personCh <- p
+}
+func (r *rankServer) WatchPersons(null *fatRank.Null, server fatRank.RankService_WatchPersonsServer) error {
+	for pi := range r.personCh {
+		if err := server.Send(pi); err != nil {
+			log.Println("发送失败", err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *rankServer) RegisterPerson(server fatRank.RankService_RegisterPersonServer) error {
@@ -30,17 +47,14 @@ func (r *rankServer) RegisterPerson(server fatRank.RankService_RegisterPersonSer
 			return err
 		}
 		pis.Items = append(pis.Items, pi)
-		r.Lock()
-		r.persons[pi.Name] = pi
-		r.Unlock()
+		//注册换成regRegistry
+		r.regPerson(pi)
 	}
 	return server.SendAndClose(pis)
 }
 
 func (r *rankServer) Register(ctx context.Context, information *fatRank.PersonalInformation) (*fatRank.PersonalInformation, error) {
-	r.Lock()
-	defer r.Unlock()
-	r.persons[information.Name] = information
+	r.regPerson(information)
 	log.Printf("收到新注册人%s\n", information.String())
 	return information, nil
 }
@@ -55,7 +69,8 @@ func startGRPCServer(ctx context.Context) {
 	s := grpc.NewServer([]grpc.ServerOption{}...)
 	//向server中注册服务
 	fatRank.RegisterRankServiceServer(s, &rankServer{
-		persons: map[string]*fatRank.PersonalInformation{},
+		persons:  map[string]*fatRank.PersonalInformation{},
+		personCh: make(chan *fatRank.PersonalInformation, 1),
 	})
 	go func() {
 		select {

@@ -9,7 +9,7 @@ service RankService{
     rpc Register(PersonalInformation) returns (PersonalInformation){}
     //单次发送，多次接收
     rpc RegisterPerson(stream PersonalInformation) returns (PersonalInformationList){}
-
+    rpc WatchPersons(null)returns (stream PersonalInformation){}
 }
 
 message null {}

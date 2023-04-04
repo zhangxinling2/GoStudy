@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	RankService_Register_FullMethodName       = "/fatRank.RankService/Register"
 	RankService_RegisterPerson_FullMethodName = "/fatRank.RankService/RegisterPerson"
+	RankService_WatchPersons_FullMethodName   = "/fatRank.RankService/WatchPersons"
 )
 
 // RankServiceClient is the client API for RankService service.
@@ -30,6 +31,7 @@ type RankServiceClient interface {
 	Register(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*PersonalInformation, error)
 	//单次发送，多次接收
 	RegisterPerson(ctx context.Context, opts ...grpc.CallOption) (RankService_RegisterPersonClient, error)
+	WatchPersons(ctx context.Context, in *Null, opts ...grpc.CallOption) (RankService_WatchPersonsClient, error)
 }
 
 type rankServiceClient struct {
@@ -83,6 +85,38 @@ func (x *rankServiceRegisterPersonClient) CloseAndRecv() (*PersonalInformationLi
 	return m, nil
 }
 
+func (c *rankServiceClient) WatchPersons(ctx context.Context, in *Null, opts ...grpc.CallOption) (RankService_WatchPersonsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &RankService_ServiceDesc.Streams[1], RankService_WatchPersons_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &rankServiceWatchPersonsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type RankService_WatchPersonsClient interface {
+	Recv() (*PersonalInformation, error)
+	grpc.ClientStream
+}
+
+type rankServiceWatchPersonsClient struct {
+	grpc.ClientStream
+}
+
+func (x *rankServiceWatchPersonsClient) Recv() (*PersonalInformation, error) {
+	m := new(PersonalInformation)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // RankServiceServer is the server API for RankService service.
 // All implementations must embed UnimplementedRankServiceServer
 // for forward compatibility
@@ -90,6 +124,7 @@ type RankServiceServer interface {
 	Register(context.Context, *PersonalInformation) (*PersonalInformation, error)
 	//单次发送，多次接收
 	RegisterPerson(RankService_RegisterPersonServer) error
+	WatchPersons(*Null, RankService_WatchPersonsServer) error
 	mustEmbedUnimplementedRankServiceServer()
 }
 
@@ -102,6 +137,9 @@ func (UnimplementedRankServiceServer) Register(context.Context, *PersonalInforma
 }
 func (UnimplementedRankServiceServer) RegisterPerson(RankService_RegisterPersonServer) error {
 	return status.Errorf(codes.Unimplemented, "method RegisterPerson not implemented")
+}
+func (UnimplementedRankServiceServer) WatchPersons(*Null, RankService_WatchPersonsServer) error {
+	return status.Errorf(codes.Unimplemented, "method WatchPersons not implemented")
 }
 func (UnimplementedRankServiceServer) mustEmbedUnimplementedRankServiceServer() {}
 
@@ -160,6 +198,27 @@ func (x *rankServiceRegisterPersonServer) Recv() (*PersonalInformation, error) {
 	return m, nil
 }
 
+func _RankService_WatchPersons_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(Null)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RankServiceServer).WatchPersons(m, &rankServiceWatchPersonsServer{stream})
+}
+
+type RankService_WatchPersonsServer interface {
+	Send(*PersonalInformation) error
+	grpc.ServerStream
+}
+
+type rankServiceWatchPersonsServer struct {
+	grpc.ServerStream
+}
+
+func (x *rankServiceWatchPersonsServer) Send(m *PersonalInformation) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // RankService_ServiceDesc is the grpc.ServiceDesc for RankService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -177,6 +236,11 @@ var RankService_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "RegisterPerson",
 			Handler:       _RankService_RegisterPerson_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "WatchPersons",
+			Handler:       _RankService_WatchPersons_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "personInfo.proto",
