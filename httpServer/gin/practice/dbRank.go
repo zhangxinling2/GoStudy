@@ -2,6 +2,7 @@ package main
 
 import (
 	"GoStudy/dataStore/fatRank"
+	"GoStudy/dataStore/types"
 	"GoStudy/httpServer/httpPratice/frinterface"
 	"fmt"
 	"gorm.io/gorm"
@@ -51,7 +52,7 @@ func (d *dbRank) RegisterPersonInformation(pi *fatRank.PersonalInformation) erro
 	return nil
 }
 
-func (d *dbRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (*fatRank.PersonalInformationFatRate, error) {
+func (d *dbRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (*types.PersonalInformationFatRate, error) {
 	resp := d.conn.Updates(pi)
 	if err := resp.Error; err != nil {
 		log.Println("更新失败")
@@ -64,17 +65,17 @@ func (d *dbRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (*fatR
 		return nil, err
 	}
 	_, _ = d.embedRank.UpdatePersonInformation(pi)
-	return &fatRank.PersonalInformationFatRate{
+	return &types.PersonalInformationFatRate{
 		Name:    pi.Name,
 		Fatrate: CalcFatRate(float64(bmi), int(pi.Age), pi.Sex),
 	}, nil
 }
 
 //GetFatrate 不从数据库取数据
-func (d *dbRank) GetFatrate(name string) (*fatRank.PersonRank, error) {
+func (d *dbRank) GetFatrate(name string) (*types.PersonRank, error) {
 	return d.embedRank.GetFatrate(name)
 }
 
-func (d *dbRank) GetTop() ([]*fatRank.PersonRank, error) {
+func (d *dbRank) GetTop() ([]*types.PersonRank, error) {
 	return d.embedRank.GetTop()
 }

@@ -1,4 +1,4 @@
-﻿package fatRank
+﻿package types
 
 type PersonalInformationFatRate struct {
 	Name    string

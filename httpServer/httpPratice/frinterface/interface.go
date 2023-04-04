@@ -1,12 +1,15 @@
 ﻿package frinterface
 
-import "GoStudy/dataStore/fatRank"
+import (
+	"GoStudy/dataStore/fatRank"
+	"GoStudy/dataStore/types"
+)
 
 type ServeInterface interface {
 	RegisterPersonInformation(pi *fatRank.PersonalInformation) error
-	UpdatePersonInformation(pi *fatRank.PersonalInformation) (*fatRank.PersonalInformationFatRate, error)
-	GetFatrate(name string) (*fatRank.PersonRank, error)
-	GetTop() ([]*fatRank.PersonRank, error)
+	UpdatePersonInformation(pi *fatRank.PersonalInformation) (*types.PersonalInformationFatRate, error)
+	GetFatrate(name string) (*types.PersonRank, error)
+	GetTop() ([]*types.PersonRank, error)
 }
 type RankInitInterface interface {
 	Init() error

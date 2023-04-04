@@ -7,6 +7,7 @@
 package fatRank
 
 import (
+	"GoStudy/dataStore/types"
 	context "context"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -20,6 +21,9 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	RankService_Register_FullMethodName       = "/fatRank.RankService/Register"
+	RankService_Update_FullMethodName         = "/fatRank.RankService/Update"
+	RankService_GetFR_FullMethodName          = "/fatRank.RankService/GetFR"
+	RankService_GetTop_FullMethodName         = "/fatRank.RankService/GetTop"
 	RankService_RegisterPerson_FullMethodName = "/fatRank.RankService/RegisterPerson"
 	RankService_WatchPersons_FullMethodName   = "/fatRank.RankService/WatchPersons"
 )
@@ -29,8 +33,12 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RankServiceClient interface {
 	Register(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*PersonalInformation, error)
+	Update(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*types.PersonalInformationFatRate, error)
+	GetFR(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*types.PersonRank, error)
+	GetTop(ctx context.Context, in *Null, opts ...grpc.CallOption) (*PersonalRanks, error)
 	//单次发送，多次接收
 	RegisterPerson(ctx context.Context, opts ...grpc.CallOption) (RankService_RegisterPersonClient, error)
+	//必须有输入，无输入就给个NULL
 	WatchPersons(ctx context.Context, in *Null, opts ...grpc.CallOption) (RankService_WatchPersonsClient, error)
 }
 
@@ -45,6 +53,33 @@ func NewRankServiceClient(cc grpc.ClientConnInterface) RankServiceClient {
 func (c *rankServiceClient) Register(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*PersonalInformation, error) {
 	out := new(PersonalInformation)
 	err := c.cc.Invoke(ctx, RankService_Register_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rankServiceClient) Update(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*types.PersonalInformationFatRate, error) {
+	out := new(types.PersonalInformationFatRate)
+	err := c.cc.Invoke(ctx, RankService_Update_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rankServiceClient) GetFR(ctx context.Context, in *PersonalInformation, opts ...grpc.CallOption) (*types.PersonRank, error) {
+	out := new(types.PersonRank)
+	err := c.cc.Invoke(ctx, RankService_GetFR_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rankServiceClient) GetTop(ctx context.Context, in *Null, opts ...grpc.CallOption) (*PersonalRanks, error) {
+	out := new(PersonalRanks)
+	err := c.cc.Invoke(ctx, RankService_GetTop_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,8 +157,12 @@ func (x *rankServiceWatchPersonsClient) Recv() (*PersonalInformation, error) {
 // for forward compatibility
 type RankServiceServer interface {
 	Register(context.Context, *PersonalInformation) (*PersonalInformation, error)
+	Update(context.Context, *PersonalInformation) (*types.PersonalInformationFatRate, error)
+	GetFR(context.Context, *PersonalInformation) (*types.PersonRank, error)
+	GetTop(context.Context, *Null) (*PersonalRanks, error)
 	//单次发送，多次接收
 	RegisterPerson(RankService_RegisterPersonServer) error
+	//必须有输入，无输入就给个NULL
 	WatchPersons(*Null, RankService_WatchPersonsServer) error
 	mustEmbedUnimplementedRankServiceServer()
 }
@@ -134,6 +173,15 @@ type UnimplementedRankServiceServer struct {
 
 func (UnimplementedRankServiceServer) Register(context.Context, *PersonalInformation) (*PersonalInformation, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedRankServiceServer) Update(context.Context, *PersonalInformation) (*types.PersonalInformationFatRate, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Update not implemented")
+}
+func (UnimplementedRankServiceServer) GetFR(context.Context, *PersonalInformation) (*types.PersonRank, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFR not implemented")
+}
+func (UnimplementedRankServiceServer) GetTop(context.Context, *Null) (*PersonalRanks, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTop not implemented")
 }
 func (UnimplementedRankServiceServer) RegisterPerson(RankService_RegisterPersonServer) error {
 	return status.Errorf(codes.Unimplemented, "method RegisterPerson not implemented")
@@ -168,6 +216,60 @@ func _RankService_Register_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RankServiceServer).Register(ctx, req.(*PersonalInformation))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RankService_Update_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersonalInformation)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RankServiceServer).Update(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RankService_Update_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RankServiceServer).Update(ctx, req.(*PersonalInformation))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RankService_GetFR_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PersonalInformation)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RankServiceServer).GetFR(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RankService_GetFR_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RankServiceServer).GetFR(ctx, req.(*PersonalInformation))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RankService_GetTop_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Null)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RankServiceServer).GetTop(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RankService_GetTop_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RankServiceServer).GetTop(ctx, req.(*Null))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -229,6 +331,18 @@ var RankService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _RankService_Register_Handler,
+		},
+		{
+			MethodName: "Update",
+			Handler:    _RankService_Update_Handler,
+		},
+		{
+			MethodName: "GetFR",
+			Handler:    _RankService_GetFR_Handler,
+		},
+		{
+			MethodName: "GetTop",
+			Handler:    _RankService_GetTop_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

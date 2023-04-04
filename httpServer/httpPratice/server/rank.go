@@ -2,6 +2,7 @@ package main
 
 import (
 	"GoStudy/dataStore/fatRank"
+	"GoStudy/dataStore/types"
 	"GoStudy/httpServer/httpPratice/frinterface"
 	"fmt"
 	"log"
@@ -68,7 +69,7 @@ func (r *FatRateRank) RegisterPersonInformation(pi *fatRank.PersonalInformation)
 	return nil
 }
 
-func (r *FatRateRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (*fatRank.PersonalInformationFatRate, error) {
+func (r *FatRateRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (*types.PersonalInformationFatRate, error) {
 	gobmi, err := BMI(pi.Weight, pi.Tall)
 	if err != nil {
 		log.Println("计算BMI失败")
@@ -76,26 +77,26 @@ func (r *FatRateRank) UpdatePersonInformation(pi *fatRank.PersonalInformation) (
 	}
 	fr := CalcFatRate(float64(gobmi), int(pi.Age), pi.Sex)
 	r.inputRecord(pi.Name, pi.Sex, fr)
-	return &fatRank.PersonalInformationFatRate{
+	return &types.PersonalInformationFatRate{
 		Name:    pi.Name,
 		Fatrate: fr,
 	}, nil
 }
 
-func (r *FatRateRank) GetFatrate(name string) (*fatRank.PersonRank, error) {
+func (r *FatRateRank) GetFatrate(name string) (*types.PersonRank, error) {
 	rankId, sex, fr := r.getRank(name)
-	Fr := fatRank.PersonalInformationFatRate{
+	Fr := types.PersonalInformationFatRate{
 		Name:    name,
 		Fatrate: fr,
 	}
-	return &fatRank.PersonRank{
+	return &types.PersonRank{
 		RankNumber: rankId,
 		Sex:        sex,
 		Fr:         Fr,
 	}, nil
 }
 
-func (r *FatRateRank) GetTop() ([]*fatRank.PersonRank, error) {
+func (r *FatRateRank) GetTop() ([]*types.PersonRank, error) {
 	return r.getRankTop(), nil
 }
 
@@ -162,18 +163,18 @@ func (r *FatRateRank) getRank(name string) (rank int, sex string, fatRate float6
 	}
 	return
 }
-func (r *FatRateRank) getRankTop() []*fatRank.PersonRank {
+func (r *FatRateRank) getRankTop() []*types.PersonRank {
 	r.itemLock.Lock()
 	defer r.itemLock.Unlock()
 	sort.Slice(r.items, func(i, j int) bool {
 		return r.items[i].FatRate < r.items[j].FatRate
 	})
-	out := make([]*fatRank.PersonRank, 0, 10)
+	out := make([]*types.PersonRank, 0, 10)
 	for i := 0; i < 10 && i < len(r.items); i++ {
-		out = append(out, &fatRank.PersonRank{
+		out = append(out, &types.PersonRank{
 			RankNumber: i,
 			Sex:        r.items[i].Sex,
-			Fr: fatRank.PersonalInformationFatRate{
+			Fr: types.PersonalInformationFatRate{
 				Name:    r.items[i].Name,
 				Fatrate: r.items[i].FatRate,
 			},

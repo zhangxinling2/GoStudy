@@ -7,8 +7,12 @@ message PersonalInformationList{
 }
 service RankService{
     rpc Register(PersonalInformation) returns (PersonalInformation){}
+    rpc Update(PersonalInformation) returns (PersonalInformationFatRate){}
+    rpc GetFR(PersonalInformation)returns (PersonRank){}
+    rpc GetTop(null)returns (PersonalRanks){}
     //单次发送，多次接收
     rpc RegisterPerson(stream PersonalInformation) returns (PersonalInformationList){}
+    //必须有输入，无输入就给个NULL
     rpc WatchPersons(null)returns (stream PersonalInformation){}
 }
 
@@ -26,4 +30,16 @@ message PersonalInformation{
     float weight = 5;
     // @gotags: gorm:"column:age"
     int64 age = 6;
+}
+message PersonalInformationFatRate{
+    string name=1;
+    float fatRate=2;
+}
+message PersonalRanks{
+    repeated PersonRank personalRanks=1;
+}
+message PersonRank{
+    string name=1;
+    string sex=2;
+    PersonalInformationFatRate pr=3;
 }
