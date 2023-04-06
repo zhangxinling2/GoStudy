@@ -1,0 +1,12 @@
+from golang:1.17.2-alpine3.13 as build
+copy main.go /tmp/
+env GOARCH=amd64
+env GOOS=linux
+env CGO_ENABLED=0
+run echo "build file server"
+workdir /tmp
+run go build -o /tmp/main ./main.go
+
+from ubuntu:18.04
+copy --from=build /tmp/main /usr/local/bin/
+cmd /usr/local/bin/main
