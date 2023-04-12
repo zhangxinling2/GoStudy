@@ -1,11 +1,12 @@
-##### **2022/3/20**
+### ORM
 
-###### reflect设置值
+#### reflect
+
+##### reflect设置值
 
 一般使用指针，先使用
 
 ```go
-
 vals:=reflect.ValueOf(entity)//得到值信息
 vals=vals.Elem()//传递指针时不论是type还是value都要使用elem得到指针指向的东西
 val:=vals.FieldByName(field)//根据字段名得到字段值的信息
@@ -21,7 +22,7 @@ goland中依赖爆红：
 
 ****
 
-###### reflect输出方法
+##### reflect输出方法
 
 方法的接收器有结构体和指针，定义在结构体上的方法使用指针也可以访问。
 
@@ -75,11 +76,322 @@ type FuncInfo struct {
 }
 ```
 
-##### **2022/3/21**
+#### SELECT起步
 
-###### 元数据解析
+##### 核心接口定义
 
-元数据很复杂，但是都是一点点加进去的，先从最简定义开始：
+###### 设计一
+
+大而全的核心接口,把所有的需求都放进Orm接口中。
+
+###### 设计二
+
+大一统的Query接口，增删改查都放一起，使用Builder模式。
+
+###### 设计三
+
+直接定义Selector接口，需要构造复杂查询就向里面加方法。使用单一职责的Builder模式。
+
+###### 设计四
+
+只定义Builder模式的终结方法。依旧是Builder模式。
+
+使用泛型做约束：例如SELECT和INSERT语句。
+
+QueryBuilder：作为构建SQL这一个单独步骤的顶级抽象。
+
+```go
+// 此接口用于查
+type Querier[T any] interface {
+   //终结方法
+   Get(ctx context.Context) (*T, error)
+   GetMulti(ctx context.Context) ([]*T, error)
+}
+// 此接口用于增删改
+type Executor interface {
+   Exec(ctx context.Context) (sql.Result, error)
+}
+// 代表语句
+type Query struct {
+	SQL  string
+	Args []any
+}
+// Builder接口用来Build语句
+type QueryBuilder interface {
+	Build() (*Query, error)
+}
+```
+
+##### SELECTOR定义
+
+先定义出整体再一点点丰富，此结构体实现QueryBuilder接口。
+
+```go
+type Selector[T any] struct {
+}
+```
+
+##### FROM语句
+
+根据mysql规范，先准备构造from。
+
+1.由于Selector本身有泛型参数，可以用泛型的类型名作表名。
+
+2.添加一个From方法，用From方法传入的参数作表名。
+
+使用From的话那么就在Selector中维持一个TableName作表名。
+
+```go
+//From 添加表名
+func (s *Selector[T]) From(tableName string) *Selector[T] {
+   s.TableName = tableName
+   return s
+}
+//那么Build就可以判断TableName是否为空来添加表名
+func (s *Selector[T]) Build() (*Query, error) {
+	s.sb = &strings.Builder{}
+	sb := s.sb
+	sb.WriteString("SELECT * FROM ")
+	//把表名加进去
+	if s.TableName == "" {
+		//通过反射获取T的名称，需先定义一个T
+		var t T
+		sb.WriteByte('`')
+		//利用反射获得表名
+		sb.WriteString(TransferName(reflect.TypeOf(t).Name()))
+		sb.WriteByte('`')
+	} else {
+		sb.WriteString(s.TableName)
+	}
+	return &Query{
+		SQL:  sb.String(),
+		Args: s.args,
+	}, nil
+}
+```
+
+###### 问题：如果用户传入了带db的表名怎么办？
+
+决策：如果用户指定了表名，就直接使用，不会使用反引号；否则使用反引号括起来。随着后面的演化决策可能会更改。
+
+##### WHERE语句
+
+构造完FROM之后，就可以开始着手构造WHERE。
+
+简单设计：Where中直接传入列query和参数args，但这种设计对And，Or，Not难以支持。而且WHERE语句很复杂，这种设计肯定无法满足需求。
+
+###### 设计：WHERE不再接收一个字符串，而是接受一个结构化的Predicate作为输入。
+
+Predicate如何定义？用户如何创建Predicate？
+
+Gorm设计：有一个顶级Expression接口，各种比较符都有一个实现，Not，and，or被认为是一个Expression的集合。
+
+根据WHERE的语法，可以先简单的定义Predicate为(列，操作符，参数)
+
+```go
+//这种设计不好链式调用
+type Predicate struct {
+   Column string
+   Opt   string
+   Arg   any
+}
+
+//把操作符单独定义
+type Op string
+
+var (
+	EQ  Op = "="
+	NOT Op = "NOT"
+	LT  Op = "<"
+	RT  Op = ">"
+	AND Op = "AND"
+)
+//OpString 为了能够直接将Op作为字符串写入
+func OpString(op Op) string {
+	return string(op)
+}
+//对比上面的设计，下面把Column单独拿出来可以链式调用
+type Predicate struct {
+   Column Column
+   Opt   op
+   Arg   any
+}
+type Column struct {
+	Name string
+}
+func C(name string)Column{
+    return Column{name:name}
+}
+//Eq 链式调用例如C("id").Eq(1)
+func (c Column) Eq(arg any) Predicate {
+	return Predicate{
+		c: c,
+		Opt:  EQ,
+        Arg:arg,
+	}
+}
+```
+
+基本的Predicate设计完后，那么And，Or就是定义在Predicate上的方法，Not左侧缺省，所以不定义在Predicate上。
+
+###### 总结基本的Predicate
+
+Predicate总的来说就是 left op right   And 就为  left and right；Or就为 left or right;Not就为 not right.
+
+###### Expression抽象
+
+WHERE语句就是Predicate op Predicate的二叉树,而到了二叉树底部，就为具体的操作了，如 id LT 12。
+
+那么我们就可以设计一个标记接口，把Predicate和Column都标记为Expression。
+
+```go
+//Expression 可以把Where语句看做Expression Opt Expression   Expression可以是Predicate也可以是Column也可以是arg
+//把where语句作为一个二叉树
+//所以需要一个标记接口expression来把Predicate，Column，arg标记为expression
+type Expression interface {
+   expr()
+}
+```
+
+那么Predicate的设计就要更改。
+
+```go
+//Predicate 完成标记后就要改造Predicate
+type Predicate struct {
+   left  Expression
+   Opt   Op
+   right Expression
+}
+```
+
+当完成这种设计后，Column的Eq等方法中的Arg就需要新设计一个Arg结构体，让它实现expression标记接口。
+
+```go
+//Value 需要实现expr来标记arg所以arg需要改造成结构体
+type Value struct {
+   Arg any
+}
+
+func (v Value) expr() {}
+
+func (c Column) Eq(arg any) Predicate {
+	return Predicate{
+		left: c,
+		Opt:  EQ,
+		right: Value{
+			Arg: arg,
+		},
+	}
+}
+```
+
+###### build实现
+
+完成设计后，就要利用build来写WHERE语句了。
+
+```go
+//添加完表名之后，继续拼接where条件
+//判断是否有条件
+if len(s.where) > 0 {
+   sb.WriteString(" WHERE ")
+   //先取第一个用于和后面的where组合
+   pw := s.where[0]
+   for i := 1; i < len(s.where); i++ {
+      //合并predicate
+      pw = pw.And(s.where[i])
+   }
+   //where有三种情况需要处理Predicate，Column和Value
+   //构建where，直接使用不能断言，需要一个函数以expression形式接受之后断言
+   //switch typ := pw.(type) {
+   //}
+   if err = s.buildExpression(pw); err != nil {
+      return nil, err
+   }
+}
+
+func (s *Selector[T]) buildExpression(expr Expression) error {
+	switch e := expr.(type) {
+	case nil:
+		return nil
+	//处理expression为列的情况
+	case Column:
+		//有了元数据后就可以校验列存不存在
+		fd, ok := s.model.fields[e.Name]
+		if !ok {
+			return errs.NewErrUnknownField(e.Name)
+		}
+		s.sb.WriteByte('`')
+		s.sb.WriteString(fd.colName)
+		s.sb.WriteByte('`')
+	case Value:
+		//需要先初始化一下arg切片
+		if s.args == nil {
+			s.args = make([]any, 0, 8)
+		}
+		s.sb.WriteByte('?')
+		s.args = append(s.args, e.Arg)
+	//最后来处理Predicate情况
+	case Predicate:
+		//由于Predicate是二叉树形态，所以可以用递归来构建
+		//构建左边Predicate
+		//断言left是否是Predicate,如果是Predicate则证明仍然是一个式子需要用括号扩起来
+		_, ok := e.left.(Predicate)
+		if ok {
+			s.sb.WriteByte('(')
+		}
+		if err := s.buildExpression(e.left); err != nil {
+			return err
+		}
+		if ok {
+			s.sb.WriteByte(')')
+		}
+		s.sb.WriteByte(' ')
+		s.sb.WriteString(OpString(e.Opt))
+		s.sb.WriteByte(' ')
+		//构建右侧Predicate
+		//断言right是否是Predicate，如果是Predicate则证明仍然是一个式子需要用括号扩起来
+		_, ok = e.right.(Predicate)
+		if ok {
+			s.sb.WriteByte('(')
+		}
+		if err := s.buildExpression(e.right); err != nil {
+			return err
+		}
+		if ok {
+			s.sb.WriteByte(')')
+		}
+	default:
+		return errs.NewErrUnsupportedExpression(expr)
+	}
+	return nil
+}
+```
+
+##### 
+
+#### 元数据解析
+
+##### 元数据作用
+
+ORM 框架需要解析模型以获得模型的元数据，这些元数据将被用于构建 SQL、执行校验，以及用于处理结果集。
+
+##### 设计总结
+
+设计总结：
+
+• 模型：对应的表名、索引、主键、关联关系
+
+• 列：列名、Go 类型、数据库类型、是否主键、是否外键
+
+##### 元数据模型定义
+
+###### model与field
+
+元数据很复杂，但是都是一点点加进去的，，其实从我们已经出现的 From 和 Where 来看，我们就需要两个东西：
+
+• 表名
+
+• 列名先从最简定义开始：
 
 ```go
 type model struct {
@@ -100,7 +412,7 @@ type field struct {
 // parseModel 解析模型
 func parseModel(entity any) (*model, error) {
    typ := reflect.TypeOf(entity)
-   //限制输入
+   //限制输入只能为一级指针
    if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
       return nil, errs.ErrPointerOnly
    }
@@ -137,15 +449,49 @@ case Column:
    s.sb.WriteByte('`')
 ```
 
-###### 元数据注册中心
+##### 元数据注册中心
 
-selector中每次都要解析一遍，所以我们可以把它缓存住。
+如果放在selector中，selector中每次都要解析一遍，所以我们可以把它的解析结果缓存住，那么存在哪，把注册中心交给DB维护。
 
-DB在ORM中就相当于HTTPServer在Web框架中的地位，允许用户使用多个DB，DB实例可以单独配置，例如配置元数据中心，DB是天然的隔离和治理单位，所以使用DB来维护元数据。
+###### 创建DB
 
-先定义元数据注册中心registry,里面维护一个map[reflect.Type]*model，之所以要用reflect.Type是因为如果要用结构体名那么会有同结构体名不同表名无法处理，如果要使用表名，我们需要得到元数据但是我们现在在注册元数据，最后选择reflect.Type。把parseModel作为registry的方法把参数改为接受reflect.Type,因为我们希望用户使用get。
+DB在ORM中就相当于HTTPServer在Web框架中的地位，允许用户使用多个DB；DB实例可以单独配置，例如配置元数据中心；DB是天然的隔离和治理单位，所以使用DB来维护元数据。
+
+暂时设计一个 NewDB 的方法，并且留下了 Option模式的口子，为将来留下扩展性的口子。
+
+同样的，虽然目前的实现不会返回 error，但我依然在返回值里面加上了error。
+
+记住，所有的公开方法尽量都要加上 error 作为返回值。
+
+如果你不想返回 error，那么就需要同时提供两个版本的方法。
 
 ```go
+type DB struct {
+   r *registry
+}
+
+//DBOption 因为DB有多种，留下一个Option的口子
+type DBOption func(*DB)
+
+func NewDB(opts ...DBOption) (*DB, error) {
+   db := &DB{
+      r: NewRegistry(),
+   }
+   for _, opt := range opts {
+      opt(db)
+   }
+   return db, nil
+}
+```
+
+###### 元数据注册中心定义
+
+先定义元数据注册中心registry,里面维护一个map[reflect.Type]*model，之所以要用reflect.Type是因为如果要用结构体名那么会有同结构体名不同表名无法处理;如果要使用表名，我们需要得到元数据但是我们现在在注册元数据;最后选择reflect.Type。把parseModel作为registry的方法把参数改为接受reflect.Type,因为我们希望用户使用get。
+
+```go
+type registry struct{
+    models map[reflect.Type]*model
+}
 //get 得到相应的model
 func(r *registry)get(val any)(*model,error){
    typ:=reflect.TypeOf(val)
@@ -163,7 +509,411 @@ func(r *registry)get(val any)(*model,error){
 }
 ```
 
-#### ORM：事务API
+###### registry并发安全问题
+
+使用普通map情况下，并发读写场景下肯定崩溃。
+
+并发问题解决的思路有两种：
+
+• 想办法去除掉并发读写的场景，但是可以保留并发读，因为只读永远都是并发安全的。这种就相当于web中的路由树，在服务启动之前就建立好了。
+
+• 用并发工具保护起来
+
+并发：double - check写法或者map使用sync.Map,使用 sync.Map，严格来说有个小问题，即同时解析的时候，会出现覆盖问题。但是我们假设解析的元数据是不会变的，所以问题不大。
+
+###### selector改造
+
+构造 SELECT 语句的时候从 registry 里面拿元数据。
+
+新建selector，按照面向对象的思想，NewSelector 之类的东西应该是定义在 DB 之上的，但是因为泛型的限制，我们只能将db作为参数传入，在selector维护DB。
+
+```go
+type Selector[T any] struct {
+   TableName string
+   //为了在多个函数中拼接字符串将string加入struct中
+   sb    *strings.Builder
+   where []Predicate
+   args  []any
+
+   model *model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
+
+   db *DB //设计出DB后，在selector中加入DB
+}
+
+//NewSelector 新建selector实例，自定义db
+func NewSelector[T any](db *DB) *Selector[T] {
+   return &Selector[T]{
+      sb: &strings.Builder{},
+      db: db,
+   }
+}
+```
+
+##### 自定义表名和列名
+
+有三种方案
+
++ 标签：直接和模型定义写在一起，非常内聚，但容易写错
++ 接口：直接定义在模型上，可以利用接口实现简单的分库分表功能。但比较隐晦，用户可能不知道实现什么接口。
++ 编程注册：部分享受编译期检查，运行到注册代码，就知道模型是否正确，但学习API难。
+
+在考虑自定义字段名和列名的时候，要考虑模型的两种来源：
+
+• 自己手写：那么三种都可以
+
+• 代码生成：例如 protobuf，这种情况下只能考虑方法二和方法三，要想支持方法一，需要我们自己开发或者修改插件，例如修改 protobuf 编译 Go 语言的插件
+
+###### 自定义列名
+
+两个步骤：1.定义标签的语法。2.解析标签：利用反射提取到完整的标签，然后按照我们的需要进行切割。
+
+```go
+// parseTag 解析标签
+// 标签形式 orm:"key1=value1,key2=value2"
+func (r *registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
+   ormTag := tag.Get("orm")
+   if ormTag == "" {
+      // 返回一个空的 map，这样调用者就不需要判断 nil 了
+      return map[string]string{}, nil
+   }
+   res := make(map[string]string, 1)
+   pairs := strings.Split(ormTag, ",")
+   for _, pair := range pairs {
+      kv := strings.Split(pair, "=")
+      //先限定只有一个tag
+      if len(kv) != 2 {
+         res[kv[0]] = kv[1]
+      }
+   }
+   return res, nil
+}
+```
+
+有了parseTag后就要在parseModel中在解析Field时解析tag。
+
+```go
+const (
+	tagKeyColumn = "column"
+)
+
+//解析字段名作为列名
+for i := 0; i < numField; i++ {
+   fdType := typ.Field(i)
+   //解析字段时检测标签
+   tags, err := r.parseTag(fdType.Tag)
+   if err != nil {
+      return nil, err
+   }
+   colName := tags[tagKeyColumn]
+   if colName == "" {
+      colName = TransferName(fdType.Name)
+   }
+   fields[fdType.Name] = &field{
+      colName: colName,
+   }
+}
+```
+
+###### 自定义表名
+
+由于标签只用于字段结构体级别（或者说表级别），我们需要额外的手段。
+
+类似于Gorm和Beego，我们需要让用户实现TableName接口来让用户指定表名。
+
+那么在parseModel就要判断用户是否在结构体上实现了TableName接口，如果实现了那么TableName就直接使用。
+
+```go
+var tableName string
+if tn, ok := val.(TableName); ok {
+   tableName = tn.TableName()
+}
+if tableName == "" {
+   tableName = TransferName(typ.Name())
+}
+return &model{
+   tableName: tableName,
+   fields:    fields,
+}, nil
+```
+
+###### 编程方式自定义表名和列名
+
+我们可以允许用户显式地注册模型，同时允许用户在注册的时候自定义一些信息。
+
+为了达成这个目的，我们需要做几件事情：
+
+• 改造设计，添加 Registry 接口
+
+• 为 registry 添加 Register 方法
+
+```go
+// Registry 接口 元数据注册中心的抽象
+type Registry interface {
+   // 
+   Get(val any) (*model, error)
+   //Register 带Option，因为注册时可能带表名等
+   Register(val any, opts ...ModelOpt) (*model, error)
+}
+```
+
+让registry实现这个抽象。
+
+```go
+//ModelOpt option的变种，带error
+type ModelOpt func(m *model) error
+
+func (r *registry) Register(val any, opts ...ModelOpt) (*model, error) {
+   typ := reflect.TypeOf(val)
+   m, err := r.parseModel(val)
+   if err != nil {
+      return nil, err
+   }
+   for _, opt := range opts {
+      err = opt(m)
+      if err != nil {
+         return nil, err
+      }
+   }
+   r.models.Store(typ, m)
+   return m, nil
+}
+func (r *registry) Get(val any) (*model, error) {
+   typ := reflect.TypeOf(val)
+   //判断是否已经缓存了此类型的元数据
+   // m,ok:=r.models[typ]
+   m, ok := r.models.Load(typ)
+   if ok {
+      return m.(*model), nil
+   }
+   return r.Register(val)
+}
+```
+
+自定义表名：
+
+```go
+func ModelWithTableName(tableName string) ModelOpt {
+  return func(model *Model)error{
+  	model.tableName = tableName
+  	return nil
+  }
+}
+```
+
+#### SQL编程
+
+##### 连接数据库
+
+Open：
+
+• driver：也就是驱动的名字，例如 “ mysql” 、“ sqlite3”
+
+• dsn：简单理解就是数据库链接信息
+
+• 常见错误：忘记匿名引入 driver 包
+
+OpenDB：一般用于接入一些自定义的驱动，例如说将分库分表做成一个驱动。
+
+连接sqlite3，mysql：
+
+```go
+db, err := sql.Open("sqlite3", "file:test.db?cache=shared&mode=memory")
+db, err := sql.Open("mysql", "root:123456@tcp(127.0.0.1:3306)/mysql")
+```
+
+##### 增删改查
+
+增改删：
+
+• Exec 或 ExecContext
+
+• 可以用 ExecContext 来控制超时
+
+• 同时检查 error 和 sql.Result
+
+###### 建表
+
+```go
+_, err = db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS test_model(
+    id INTEGER PRIMARY KEY,
+    first_name TEXT NOT NULL,
+    age INTEGER,
+    last_name TEXT NOT NULL
+)
+`)
+```
+
+###### 插入数据
+
+```go
+// 使用 ？ 作为查询的参数的占位符
+res, err := db.ExecContext(ctx, "INSERT INTO test_model(`id`, `first_name`, `age`, `last_name`) VALUES(?, ?, ?, ?)",
+   1, "Tom", 18, "Jerry")
+affected, err := res.RowsAffected()
+log.Println("受影响行数", affected)
+lastId, err := res.LastInsertId()
+require.NoError(t, err)
+log.Println("最后插入 ID", lastId)
+```
+
+查询：
+
+• QueryRow 和 QueryRowContext：查询单行数据
+
+• Query 和 QueryContext：查询多行数据
+
+###### 查询单行数据
+
+row必须有一行，如果没有调用row的scan时会返回sql.ErrNoRow
+
+```go
+row := db.QueryRowContext(ctx,
+   "SELECT `id`, `first_name`, `age`, `last_name` FROM `test_model` WHERE `id` = ?", 1)
+tm := TestModel{}
+//查询出来后要用Scan注入
+err = row.Scan(&tm.Id, &tm.FirstName, &tm.Age, &tm.LastName)
+```
+
+###### 查询多行数据
+
+```go
+rows, err := db.QueryContext(ctx,
+   "SELECT `id`, `first_name`, `age`, `last_name` FROM `test_model` WHERE `id` = ?", 1)
+require.NoError(t, row.Err())
+//使用rows.Next来逐行读取
+for rows.Next() {
+   tm = TestModel{}
+   err = rows.Scan(&tm.Id, &tm.FirstName, &tm.Age, &tm.LastName)
+   require.NoError(t, err)
+   log.Println(tm)
+}
+```
+
+要注意参数传递，一般的 SQL 都是使用 ? 作为参数占位符。
+
+不要把参数拼接进去 SQL 本身，容易引起注入。
+
+##### 自定义支持类型
+
+• driver.Valuer：读取，实现该接口的类型可以作为查询参数使用(Go类型到数据库类型）
+
+• sql.Scanner：写入，实现该接口的类型可以作为接收器用于 Scan 方法（数据库类型到Go 类型）
+
+自定义类型一般是实现这两个接口。
+
+如要支持json
+
+```go
+type JsonColumn[T any] struct {
+   Val T
+   // NULL 的问题
+   Valid bool
+}
+
+func (j JsonColumn[T]) Value() (driver.Value, error) {
+   // NULL
+   if !j.Valid {
+      return nil, nil
+   }
+   return json.Marshal(j.Val)
+}
+
+func (j *JsonColumn[T]) Scan(src any) error {
+   //    int64
+   //    float64
+   //    bool
+   //    []byte
+   //    string
+   //    time.Time
+   //    nil - for NULL values
+   var bs []byte
+   switch data := src.(type) {
+   case string:
+      // 你可以考虑额外处理空字符串
+      bs = []byte(data)
+   case []byte:
+      // 你也可以考虑额外处理 []byte{}
+      bs = data
+   case nil:
+      // 说明数据库里面存的就是 NULL
+      return nil
+   default:
+      return errors.New("不支持类型")
+   }
+
+   err := json.Unmarshal(bs, &j.Val)
+   if err == nil {
+      j.Valid = true
+   }
+   return err
+}
+```
+
+##### sqlmock入门
+
+在单元测试里面我们不希望依赖于真实的数据库，因为数据难以模拟，而且 error 更加难以模拟，所以我们采用 sqlmock 来做单元测试。
+
+###### sqlmock 使用：
+
+• 初始化：返回一个 mockDB，类型是*sql.DB，还有 mock 用于构造模拟的场景；
+
+• 设置 mock：基本上是 ExpectXXXWillXXX，严格依赖于顺序。
+
+```go
+func TestSqlMock(t *testing.T) {
+   _, mock, err := sqlmock.New()
+   require.NoError(t, err)
+   mock.ExpectBegin()
+   //NewRows([]string{"id", "name"}).AddRow(1,"Tom") NewRows添加列 AddRow添加列中的数据
+   mockRows := sqlmock.NewRows([]string{"id", "name"}).AddRow(12, "Tom")
+   mock.ExpectQuery("SELECT .*").WillReturnRows(mockRows)
+   mockResult := sqlmock.NewResult(12, 1)
+   mock.ExpectExec("UPDATE ,*").WillReturnResult(mockResult)
+}
+```
+
+#### SELECT结果集处理
+
+现在需要让ORM和sql包结合。
+
+###### 发起查询
+
+发起查询就是在selector的Get和GetMulti使用sql.DB发起查询。单行数据使用QueryRowContext,多行数据使用QueryContext。那么在实现时出现的问题就是db从哪来，*T如何转化。
+
+```go
+func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
+   var db sql.DB
+   q, err := s.Build()
+   if err != nil {
+      return nil, err
+   }
+   row := db.QueryRowContext(ctx, q.SQL, q.Args...)
+
+   return t, nil
+}
+func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
+   var db sql.DB
+   q, err := s.Build()
+   if err != nil {
+      return nil, err
+   }
+   rows, err := db.QueryContext(ctx, q.SQL, q.Args...)
+   for rows.Next() {
+   }
+   return nil, nil
+}
+```
+
+###### 那么我们的db从何处来？
+
+当然是与我们ORM层面上的DB绑定到一起，我们可以把DB当做sql.DB的一个封装。这样sql.DB就随着DB保存在selector中。
+
+那么封装完成后如何连接数据库？
+
+那当然是新建一个
+
+#### 事务API
 
 ##### Session抽象
 
@@ -698,6 +1448,22 @@ func getHandler[T any](ctx context.Context,sess Session,c core,qc *QueryContext)
 ```
 
 #### Join查询
+
+Join查询有点像我们的 Expression，就是可以查询套查询无限套下去。
+
+##### Join语法
+
+JOIN 语法有两种形态：
+
++ JOIN ... ON
++ JOIN ... USING：USING 后面使用的是列名
+
+JOIN本身有：
+
++ INNER JOIN、 JOIN
++ LEFT JOIN、RIGHT JOIN
+
+SELECT
 
 #### protobuf魔改
 

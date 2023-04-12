@@ -3,10 +3,11 @@ package orm
 import (
 	"GoStudy/internal/errs"
 	"database/sql"
+	"github.com/DATA-DOG/go-sqlmock"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestTransferName(t *testing.T) {
@@ -56,22 +57,22 @@ func TestSelector_Where(t *testing.T) {
 	}{
 		{
 			name:      "eq where",
-			builder:   (NewSelector[TestModel](db)).Where(C("Tom").Eq(18)),
-			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE `Tom` = ?;", Args: []any{18}},
+			builder:   (NewSelector[TestModel](db)).Where(C("Age").Eq(18)),
+			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE `age` = ?;", Args: []any{18}},
 		},
 		{
 			name:      "and where",
-			builder:   (&Selector[TestModel]{}).Where(C("Tom").Eq(18).And(C("Jerry").Lt(19))),
-			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE (`Tom` = ?) AND (`Jerry` < ?);", Args: []any{18, 19}},
+			builder:   (NewSelector[TestModel](db)).Where(C("Age").Eq(18).And(C("Age").Lt(19))),
+			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE (`age` = ?) AND (`age` < ?);", Args: []any{18, 19}},
 		},
 		{
 			name:      "not where",
-			builder:   (&Selector[TestModel]{}).Where(Not(C("Tom").Eq(18).And(C("Jerry").Lt(19)))),
-			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE  NOT ((`Tom` = ?) AND (`Jerry` < ?));", Args: []any{18, 19}},
+			builder:   (NewSelector[TestModel](db)).Where(Not(C("Age").Eq(18).And(C("Age").Lt(19)))),
+			wantQuery: &Query{SQL: "SELECT * FROM `test_model` WHERE  NOT ((`age` = ?) AND (`age` < ?));", Args: []any{18, 19}},
 		},
 		{
 			name:    "error",
-			builder: (&Selector[TestModel]{}).Where(C("Invalid").Eq(18)),
+			builder: (NewSelector[TestModel](db)).Where(C("Invalid").Eq(18)),
 			wantErr: errs.NewErrUnknownField("Invalid"),
 		},
 	}
@@ -92,4 +93,15 @@ type TestModel struct {
 	FirstName string
 	Age       int8
 	LastName  *sql.NullString
+}
+
+func TestSqlMock(t *testing.T) {
+	_, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	mock.ExpectBegin()
+	//NewRows([]string{"id", "name"}).AddRow(1,"Tom") NewRows添加列 AddRow添加列中的数据
+	mockRows := sqlmock.NewRows([]string{"id", "name"}).AddRow(12, "Tom")
+	mock.ExpectQuery("SELECT .*").WillReturnRows(mockRows)
+	mockResult := sqlmock.NewResult(12, 1)
+	mock.ExpectExec("UPDATE ,*").WillReturnResult(mockResult)
 }

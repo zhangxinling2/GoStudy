@@ -39,11 +39,23 @@ func TestParseModel(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:   "test tag",
+			entity: &TestTag{},
+			wantRes: &model{
+				tableName: "TestTag---",
+				fields: map[string]*field{
+					"Id": {
+						colName: "idTest",
+					},
+				},
+			},
+		},
 	}
 	r := &registry{}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := r.get(tc.entity)
+			m, err := r.Get(tc.entity)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {
 				return
@@ -51,4 +63,12 @@ func TestParseModel(t *testing.T) {
 			assert.Equal(t, tc.wantRes, m)
 		})
 	}
+}
+
+type TestTag struct {
+	Id int `orm:"column=idTest"`
+}
+
+func (t TestTag) TableName() string {
+	return "TestTag---"
 }

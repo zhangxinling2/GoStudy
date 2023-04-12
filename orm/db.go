@@ -9,7 +9,7 @@ type DBOption func(*DB)
 
 func NewDB(opts ...DBOption) (*DB, error) {
 	db := &DB{
-		r: &registry{},
+		r: NewRegistry(),
 	}
 	for _, opt := range opts {
 		opt(db)

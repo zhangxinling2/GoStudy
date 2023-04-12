@@ -6,7 +6,7 @@ import (
 
 type Queries[T any] interface {
 	Get(ctx context.Context) (*T, error)
-	GetMutil(ctx context.Context) ([]*T, error)
+	GetMulti(ctx context.Context) ([]*T, error)
 }
 
 type Execute interface {

@@ -3,10 +3,12 @@ module GoStudy
 go 1.18
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/docker/docker v20.10.18+incompatible
 	github.com/gin-contrib/pprof v1.4.0
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-sql-driver/mysql v1.7.0
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/stretchr/testify v1.8.2
 	go.etcd.io/etcd/client/v3 v3.5.7
 	google.golang.org/grpc v1.41.0

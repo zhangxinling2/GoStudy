@@ -3,6 +3,7 @@ package orm
 import (
 	"GoStudy/internal/errs"
 	"context"
+	"database/sql"
 	"strings"
 )
 
@@ -35,7 +36,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 	var err error
 	//定义元数据注册中心后selector使用它的get方法即可
 	//s.model,err=parseModel(&t)
-	s.model, err = s.db.r.get(&t)
+	s.model, err = s.db.r.Get(&t)
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +150,32 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 	return nil
 }
 func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
-	return nil, nil
+	var db sql.DB
+	q, err := s.Build()
+	if err != nil {
+		return nil, err
+	}
+	row := db.QueryRowContext(ctx, q.SQL, q.Args...)
+	var t *T
+	err = row.Scan(t)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
 }
-func (s *Selector[T]) GetMutil(ctx context.Context) ([]*T, error) {
+func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
+	var db sql.DB
+	q, err := s.Build()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, q.SQL, q.Args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+
+	}
 	return nil, nil
 }
