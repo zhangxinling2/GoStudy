@@ -20,3 +20,6 @@ func NewErrUnsupportedExpression(expr any) error {
 func NewErrUnknownField(expr any) error {
 	return errors.New(fmt.Sprintf("orm:未知字段 %v", expr))
 }
+func NewErrInvalidTagContent(pair any) error {
+	return errors.New(fmt.Sprintf("orm:无效tag %v", pair))
+}
