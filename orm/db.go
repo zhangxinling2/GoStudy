@@ -1,18 +1,30 @@
 package orm
 
+import "database/sql"
+
 type DB struct {
-	r *registry
+	r  *registry
+	db *sql.DB
 }
 
 //DBOption 因为DB有多种，留下一个Option的口子
 type DBOption func(*DB)
 
-func NewDB(opts ...DBOption) (*DB, error) {
-	db := &DB{
-		r: NewRegistry(),
+func Open(driver string, dst string, opts ...DBOption) (*DB, error) {
+	db, err := sql.Open(driver, dst)
+	if err != nil {
+		return nil, err
+	}
+	return OpenDB(db, opts...)
+}
+
+func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
+	res := &DB{
+		r:  &registry{},
+		db: db,
 	}
 	for _, opt := range opts {
-		opt(db)
+		opt(res)
 	}
-	return db, nil
+	return res, nil
 }

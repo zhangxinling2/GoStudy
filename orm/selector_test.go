@@ -2,7 +2,9 @@ package orm
 
 import (
 	"GoStudy/internal/errs"
+	"context"
 	"database/sql"
+	"errors"
 	"github.com/DATA-DOG/go-sqlmock"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -46,9 +48,14 @@ func TestSelector_Build(t *testing.T) {
 	}
 }
 
-func TestSelector_Where(t *testing.T) {
-	db, err := NewDB()
+//memoryDB 仅用于单元测试
+func memoryDB(t *testing.T) *DB {
+	db, err := Open("sqlite3", "file:test.db?cache=shared&mode=memory")
 	require.NoError(t, err)
+	return db
+}
+func TestSelector_Where(t *testing.T) {
+	db := memoryDB(t)
 	testCases := []struct {
 		name      string
 		builder   QueryBuilder
@@ -103,5 +110,60 @@ func TestSqlMock(t *testing.T) {
 	mockRows := sqlmock.NewRows([]string{"id", "name"}).AddRow(12, "Tom")
 	mock.ExpectQuery("SELECT .*").WillReturnRows(mockRows)
 	mockResult := sqlmock.NewResult(12, 1)
-	mock.ExpectExec("UPDATE ,*").WillReturnResult(mockResult)
+	mock.ExpectExec("UPDATE .*").WillReturnResult(mockResult)
+}
+
+func TestGet(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	db, err := OpenDB(mockDB)
+	require.NoError(t, err)
+	//对应于query error
+	mock.ExpectQuery("SELECT .*").WillReturnError(errors.New("query error"))
+	//对应于no rows
+	rows := sqlmock.NewRows([]string{"id", "first_name", "last_name", "age"})
+	mock.ExpectQuery("SELECT .*").WillReturnRows(rows)
+	rows = sqlmock.NewRows([]string{"id", "first_name", "last_name", "age"}).AddRow("1", "Tom", "Jerry", "18")
+	mock.ExpectQuery("SELECT .*").WillReturnRows(rows)
+	testCases := []struct {
+		name    string
+		s       *Selector[TestModel]
+		wantRes *TestModel
+		wantErr error
+	}{
+		{
+			name:    "invalid query",
+			s:       NewSelector[TestModel](db).Where(C("XXX").Eq(1)),
+			wantErr: errs.NewErrUnknownField("XXX"),
+		},
+		{
+			name:    "Query error",
+			s:       NewSelector[TestModel](db).Where(C("Id").Eq(1)),
+			wantErr: errors.New("query error"),
+		},
+		{
+			name:    "no rows",
+			s:       NewSelector[TestModel](db).Where(C("Id").Eq(1)),
+			wantErr: errs.ErrNoRows,
+		},
+		{
+			name: "data",
+			s:    NewSelector[TestModel](db).Where(C("Id").Eq(1)),
+			wantRes: &TestModel{
+				Id:        1,
+				FirstName: "Tom",
+				Age:       18,
+				LastName:  &sql.NullString{Valid: true, String: "Jerry"},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := tc.s.Get(context.Background())
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantRes, res)
+		})
+	}
 }

@@ -109,6 +109,7 @@ func (r *registry) parseModel(val any) (*model, error) {
 	//获取字段数量
 	numField := typ.NumField()
 	fields := make(map[string]*field, numField)
+	columns := make(map[string]*field, numField)
 	//解析字段名作为列名
 	for i := 0; i < numField; i++ {
 		fdType := typ.Field(i)
@@ -121,9 +122,14 @@ func (r *registry) parseModel(val any) (*model, error) {
 		if colName == "" {
 			colName = TransferName(fdType.Name)
 		}
-		fields[fdType.Name] = &field{
+		fd := &field{
+			goName:  fdType.Name,
 			colName: colName,
+			typ:     fdType.Type,
 		}
+		//都需要相同的结果那么久提取出来
+		fields[fdType.Name] = fd
+		columns[colName] = fd
 	}
 	var tableName string
 	if tn, ok := val.(TableName); ok {
@@ -134,7 +140,8 @@ func (r *registry) parseModel(val any) (*model, error) {
 	}
 	return &model{
 		tableName: tableName,
-		fields:    fields,
+		fieldMap:  fields,
+		columnMap: columns,
 	}, nil
 }
 
@@ -148,17 +155,17 @@ func (r *registry) parseModel(val any) (*model, error) {
 //	typ = typ.Elem()
 //	//获取字段数量
 //	numField := typ.NumField()
-//	fields := make(map[string]*field, numField)
+//	fieldMap := make(map[string]*field, numField)
 //	//解析字段名作为列名
 //	for i := 0; i < numField; i++ {
 //		fdType := typ.Field(i)
-//		fields[fdType.Name] = &field{
+//		fieldMap[fdType.Name] = &field{
 //			colName: TransferName(fdType.Name),
 //		}
 //	}
 //	return &model{
 //		tableName: TransferName(typ.Name()),
-//		fields:    fields,
+//		fieldMap:    fieldMap,
 //	}, nil
 //}
 func TransferName(name string) string {

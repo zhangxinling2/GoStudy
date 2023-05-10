@@ -9,6 +9,8 @@ import (
 
 var (
 	ErrPointerOnly = errors.New("orm:只支持一级指针作为输入")
+	ErrNoRows      = errors.New("orm:没有数据")
+	ErrMultiCols   = errors.New("orm:列过多")
 )
 
 //带参数的可声明为函数
@@ -22,4 +24,7 @@ func NewErrUnknownField(expr any) error {
 }
 func NewErrInvalidTagContent(pair any) error {
 	return errors.New(fmt.Sprintf("orm:无效tag %v", pair))
+}
+func NewErrUnknownColumn(expr any) error {
+	return errors.New(fmt.Sprintf("orm:未知列 %v", expr))
 }

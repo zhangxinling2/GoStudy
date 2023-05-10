@@ -3,7 +3,7 @@ package orm
 import (
 	"GoStudy/internal/errs"
 	"context"
-	"database/sql"
+	"reflect"
 	"strings"
 )
 
@@ -100,7 +100,7 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 	//处理expression为列的情况
 	case Column:
 		//有了元数据后就可以校验列存不存在
-		fd, ok := s.model.fields[e.Name]
+		fd, ok := s.model.fieldMap[e.Name]
 		if !ok {
 			return errs.NewErrUnknownField(e.Name)
 		}
@@ -108,12 +108,8 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 		s.sb.WriteString(fd.colName)
 		s.sb.WriteByte('`')
 	case Value:
-		//需要先初始化一下arg切片
-		if s.args == nil {
-			s.args = make([]any, 0, 8)
-		}
 		s.sb.WriteByte('?')
-		s.args = append(s.args, e.Arg)
+		s.addArg(e.Arg)
 	//最后来处理Predicate情况
 	case Predicate:
 		//由于Predicate是二叉树形态，所以可以用递归来构建
@@ -150,26 +146,68 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 	return nil
 }
 func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
-	var db sql.DB
 	q, err := s.Build()
 	if err != nil {
 		return nil, err
 	}
-	row := db.QueryRowContext(ctx, q.SQL, q.Args...)
-	var t *T
-	err = row.Scan(t)
+	row, err := s.db.db.QueryContext(ctx, q.SQL, q.Args...)
 	if err != nil {
 		return nil, err
+	}
+	//要确认有没有数据
+	if !row.Next() {
+		return nil, errs.ErrNoRows
+	}
+
+	t := new(T)
+
+	if err != nil {
+		return nil, err
+	}
+	//拿到列名后肯定要借助model元数据
+	cols, err := row.Columns()
+	if err != nil {
+		return nil, err
+	}
+	vals := make([]any, 0, len(cols))
+	valElem := make([]reflect.Value, 0, len(cols))
+	for _, c := range cols {
+		fd, ok := s.model.columnMap[c]
+		if !ok {
+			//说明根本没有这个列，查错了
+			return nil, errs.NewErrUnknownColumn(c)
+		}
+		//反射创建了新的实例
+		//这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
+		val := reflect.New(fd.typ)
+		vals = append(vals, val.Interface())
+		valElem = append(valElem, val.Elem())
+	}
+	//判断是否列过多
+	if len(cols) > len(s.model.fieldMap) {
+		return nil, errs.ErrMultiCols
+	}
+	err = row.Scan(vals...)
+	if err != nil {
+		return nil, err
+	}
+	tpValue := reflect.ValueOf(t)
+	for i, c := range cols {
+		fd, ok := s.model.columnMap[c]
+		if !ok {
+			//说明根本没有这个列，查错了
+			return nil, errs.NewErrUnknownColumn(c)
+		}
+		tpValue.Elem().FieldByName(fd.goName).Set(valElem[i])
 	}
 	return t, nil
 }
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
-	var db sql.DB
 	q, err := s.Build()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.QueryContext(ctx, q.SQL, q.Args...)
+	rows, err := s.db.db.QueryContext(ctx, q.SQL, q.Args...)
 	if err != nil {
 		return nil, err
 	}
@@ -178,4 +216,14 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 
 	}
 	return nil, nil
+}
+func (s *Selector[T]) addArg(vals ...any) {
+	if len(vals) == 0 {
+		return
+	}
+	if s.args == nil {
+		s.args = make([]any, 0, 8)
+	}
+	s.args = append(s.args, vals...)
+	return
 }

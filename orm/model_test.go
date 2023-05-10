@@ -23,7 +23,7 @@ func TestParseModel(t *testing.T) {
 			entity: &TestModel{},
 			wantRes: &model{
 				tableName: "test_model",
-				fields: map[string]*field{
+				fieldMap: map[string]*field{
 					"Id": {
 						colName: "id",
 					},
@@ -44,7 +44,7 @@ func TestParseModel(t *testing.T) {
 			entity: &TestTag{},
 			wantRes: &model{
 				tableName: "TestTag---",
-				fields: map[string]*field{
+				fieldMap: map[string]*field{
 					"Id": {
 						colName: "idTest",
 					},
