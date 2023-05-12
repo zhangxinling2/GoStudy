@@ -1,7 +1,7 @@
 package orm
 
 import (
-	"GoStudy/internal/errs"
+	"GoStudy/orm/internal/errs"
 	"context"
 	"database/sql"
 	"errors"

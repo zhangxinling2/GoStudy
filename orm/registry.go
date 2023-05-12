@@ -1,7 +1,7 @@
 package orm
 
 import (
-	"GoStudy/internal/errs"
+	"GoStudy/orm/internal/errs"
 	"reflect"
 	"strings"
 	"sync"
@@ -126,6 +126,7 @@ func (r *registry) parseModel(val any) (*model, error) {
 			goName:  fdType.Name,
 			colName: colName,
 			typ:     fdType.Type,
+			offset:  fdType.Offset,
 		}
 		//都需要相同的结果那么久提取出来
 		fields[fdType.Name] = fd

@@ -21,6 +21,8 @@ type field struct {
 	colName string
 	//代表字段的类型
 	typ reflect.Type
+
+	offset uintptr
 }
 
 // TableName 用户实现这个接口来返回自定义的表名

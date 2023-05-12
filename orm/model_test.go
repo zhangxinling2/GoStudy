@@ -1,7 +1,7 @@
 package orm
 
 import (
-	"GoStudy/internal/errs"
+	"GoStudy/orm/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

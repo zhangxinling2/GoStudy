@@ -1,10 +1,11 @@
 package orm
 
 import (
-	"GoStudy/internal/errs"
+	"GoStudy/orm/internal/errs"
 	"context"
 	"reflect"
 	"strings"
+	"unsafe"
 )
 
 //Selector TableName是为了表名
@@ -170,36 +171,49 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 		return nil, err
 	}
 	vals := make([]any, 0, len(cols))
-	valElem := make([]reflect.Value, 0, len(cols))
+	address := reflect.ValueOf(t).UnsafePointer()
 	for _, c := range cols {
 		fd, ok := s.model.columnMap[c]
 		if !ok {
-			//说明根本没有这个列，查错了
 			return nil, errs.NewErrUnknownColumn(c)
 		}
-		//反射创建了新的实例
-		//这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
-		val := reflect.New(fd.typ)
+
+		fdAddress := unsafe.Pointer(uintptr(address) + fd.offset)
+		val := reflect.NewAt(fd.typ, fdAddress)
 		vals = append(vals, val.Interface())
-		valElem = append(valElem, val.Elem())
 	}
-	//判断是否列过多
-	if len(cols) > len(s.model.fieldMap) {
-		return nil, errs.ErrMultiCols
-	}
-	err = row.Scan(vals...)
-	if err != nil {
-		return nil, err
-	}
-	tpValue := reflect.ValueOf(t)
-	for i, c := range cols {
-		fd, ok := s.model.columnMap[c]
-		if !ok {
-			//说明根本没有这个列，查错了
-			return nil, errs.NewErrUnknownColumn(c)
-		}
-		tpValue.Elem().FieldByName(fd.goName).Set(valElem[i])
-	}
+	row.Scan(vals)
+	//valElem := make([]reflect.Value, 0, len(cols))
+	//for _, c := range cols {
+	//	fd, ok := s.model.columnMap[c]
+	//	if !ok {
+	//		//说明根本没有这个列，查错了
+	//		return nil, errs.NewErrUnknownColumn(c)
+	//	}
+	//	//反射创建了新的实例
+	//	//这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
+	//	val := reflect.New(fd.typ)
+	//	vals = append(vals, val.Interface())
+	//	valElem = append(valElem, val.Elem())
+	//}
+	////判断是否列过多
+	//if len(cols) > len(s.model.fieldMap) {
+	//	return nil, errs.ErrMultiCols
+	//}
+	////把值传入vals后再放入t
+	//err = row.Scan(vals...)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//tpValue := reflect.ValueOf(t)
+	//for i, c := range cols {
+	//	fd, ok := s.model.columnMap[c]
+	//	if !ok {
+	//		//说明根本没有这个列，查错了
+	//		return nil, errs.NewErrUnknownColumn(c)
+	//	}
+	//	tpValue.Elem().FieldByName(fd.goName).Set(valElem[i])
+	//}
 	return t, nil
 }
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
