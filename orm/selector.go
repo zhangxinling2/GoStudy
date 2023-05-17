@@ -19,7 +19,7 @@ type Selector[T any] struct {
 	where []Predicate
 	args  []any
 
-	model *model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
+	model *Model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
 
 	db *DB //设计出DB后，在selector中加入DB
 }
@@ -53,7 +53,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		//利用反射获得表名
 		//sb.WriteString(TransferName(reflect.TypeOf(t).Name()))
 		//使用元数据解析的表名
-		sb.WriteString(s.model.tableName)
+		sb.WriteString(s.model.TableName)
 		sb.WriteByte('`')
 	} else {
 		sb.WriteString(s.TableName)
@@ -70,7 +70,7 @@ func (s *Selector[T]) Build() (*Query, error) {
 		}
 		//where有三种情况需要处理Predicate，Column和Value
 		//构建where，直接使用不能断言，需要一个函数以expression形式接受之后断言
-		//switch typ := pw.(type) {
+		//switch Typ := pw.(type) {
 		//}
 		if err = s.buildExpression(pw); err != nil {
 			return nil, err
@@ -101,12 +101,12 @@ func (s *Selector[T]) buildExpression(expr Expression) error {
 	//处理expression为列的情况
 	case Column:
 		//有了元数据后就可以校验列存不存在
-		fd, ok := s.model.fieldMap[e.Name]
+		fd, ok := s.model.FieldMap[e.Name]
 		if !ok {
 			return errs.NewErrUnknownField(e.Name)
 		}
 		s.sb.WriteByte('`')
-		s.sb.WriteString(fd.colName)
+		s.sb.WriteString(fd.ColName)
 		s.sb.WriteByte('`')
 	case Value:
 		s.sb.WriteByte('?')
@@ -173,31 +173,31 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	vals := make([]any, 0, len(cols))
 	address := reflect.ValueOf(t).UnsafePointer()
 	for _, c := range cols {
-		fd, ok := s.model.columnMap[c]
+		fd, ok := s.model.ColumnMap[c]
 		if !ok {
 			return nil, errs.NewErrUnknownColumn(c)
 		}
 
-		fdAddress := unsafe.Pointer(uintptr(address) + fd.offset)
-		val := reflect.NewAt(fd.typ, fdAddress)
+		fdAddress := unsafe.Pointer(uintptr(address) + fd.Offset)
+		val := reflect.NewAt(fd.Typ, fdAddress)
 		vals = append(vals, val.Interface())
 	}
 	row.Scan(vals)
 	//valElem := make([]reflect.Value, 0, len(cols))
 	//for _, c := range cols {
-	//	fd, ok := s.model.columnMap[c]
+	//	fd, ok := s.model.ColumnMap[c]
 	//	if !ok {
 	//		//说明根本没有这个列，查错了
 	//		return nil, errs.NewErrUnknownColumn(c)
 	//	}
 	//	//反射创建了新的实例
-	//	//这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
-	//	val := reflect.New(fd.typ)
+	//	//这里创建的时原本类型的指针 例如fd.Typ=int那么val就是int的指针
+	//	val := reflect.New(fd.Typ)
 	//	vals = append(vals, val.Interface())
 	//	valElem = append(valElem, val.Elem())
 	//}
 	////判断是否列过多
-	//if len(cols) > len(s.model.fieldMap) {
+	//if len(cols) > len(s.model.FieldMap) {
 	//	return nil, errs.ErrMultiCols
 	//}
 	////把值传入vals后再放入t
@@ -207,12 +207,12 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	//}
 	//tpValue := reflect.ValueOf(t)
 	//for i, c := range cols {
-	//	fd, ok := s.model.columnMap[c]
+	//	fd, ok := s.model.ColumnMap[c]
 	//	if !ok {
 	//		//说明根本没有这个列，查错了
 	//		return nil, errs.NewErrUnknownColumn(c)
 	//	}
-	//	tpValue.Elem().FieldByName(fd.goName).Set(valElem[i])
+	//	tpValue.Elem().FieldByName(fd.GoName).Set(valElem[i])
 	//}
 	return t, nil
 }

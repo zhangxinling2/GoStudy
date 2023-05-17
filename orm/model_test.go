@@ -10,7 +10,7 @@ func TestParseModel(t *testing.T) {
 	testCases := []struct {
 		name    string
 		entity  any
-		wantRes *model
+		wantRes *Model
 		wantErr error
 	}{
 		{
@@ -21,20 +21,20 @@ func TestParseModel(t *testing.T) {
 		{
 			name:   "test model ptr",
 			entity: &TestModel{},
-			wantRes: &model{
-				tableName: "test_model",
-				fieldMap: map[string]*field{
+			wantRes: &Model{
+				TableName: "test_model",
+				FieldMap: map[string]*Field{
 					"Id": {
-						colName: "id",
+						ColName: "id",
 					},
 					"FirstName": {
-						colName: "first_name",
+						ColName: "first_name",
 					},
 					"Age": {
-						colName: "age",
+						ColName: "age",
 					},
 					"LastName": {
-						colName: "last_name",
+						ColName: "last_name",
 					},
 				},
 			},
@@ -42,11 +42,11 @@ func TestParseModel(t *testing.T) {
 		{
 			name:   "test tag",
 			entity: &TestTag{},
-			wantRes: &model{
-				tableName: "TestTag---",
-				fieldMap: map[string]*field{
+			wantRes: &Model{
+				TableName: "TestTag---",
+				FieldMap: map[string]*Field{
 					"Id": {
-						colName: "idTest",
+						ColName: "idTest",
 					},
 				},
 			},

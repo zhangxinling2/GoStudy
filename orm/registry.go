@@ -13,16 +13,16 @@ const (
 )
 
 //ModelOpt option的变种，带error
-type ModelOpt func(m *model) error
+type ModelOpt func(m *Model) error
 
 // Registry 接口 元数据注册中心的抽象
 type Registry interface {
-	Get(val any) (*model, error)
+	Get(val any) (*Model, error)
 	//Register 带Option，因为注册时可能带表名等
-	Register(val any, opts ...ModelOpt) (*model, error)
+	Register(val any, opts ...ModelOpt) (*Model, error)
 }
 
-func (r *registry) Register(val any, opts ...ModelOpt) (*model, error) {
+func (r *registry) Register(val any, opts ...ModelOpt) (*Model, error) {
 	typ := reflect.TypeOf(val)
 	m, err := r.parseModel(val)
 	if err != nil {
@@ -37,32 +37,32 @@ func (r *registry) Register(val any, opts ...ModelOpt) (*model, error) {
 	r.models.Store(typ, m)
 	return m, nil
 }
-func (r *registry) Get(val any) (*model, error) {
+func (r *registry) Get(val any) (*Model, error) {
 	typ := reflect.TypeOf(val)
 	//判断是否已经缓存了此类型的元数据
-	//	m,ok:=r.models[typ]
+	//	m,ok:=r.models[Typ]
 	m, ok := r.models.Load(typ)
 	if ok {
-		return m.(*model), nil
+		return m.(*Model), nil
 	}
 	return r.Register(val)
 }
 
 //GetV1 得到相应的model
 //func (r *registry) GetV1(val any) (*model, error) {
-//	typ := reflect.TypeOf(val)
+//	Typ := reflect.TypeOf(val)
 //	//判断是否已经缓存了此类型的元数据
-//	//	m,ok:=r.models[typ]
-//	m, ok := r.models.Load(typ)
+//	//	m,ok:=r.models[Typ]
+//	m, ok := r.models.Load(Typ)
 //	if !ok {
 //		var err error
-//		m, err = r.parseModel(typ)
+//		m, err = r.parseModel(Typ)
 //		if err != nil {
 //			return nil, err
 //		}
 //	}
-//	//r.models[typ]=m
-//	r.models.Store(typ, m) //也可能同时执行到这里，引发覆盖问题，不过假设元数据解析的结果不变，影响不大
+//	//r.models[Typ]=m
+//	r.models.Store(Typ, m) //也可能同时执行到这里，引发覆盖问题，不过假设元数据解析的结果不变，影响不大
 //	return m.(*model), nil
 //}
 
@@ -99,7 +99,7 @@ func (r *registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
 
 // parseModel 解析模型
 // 声明注册中心后把parseModel作为注册中心的私有方法，希望只用到get
-func (r *registry) parseModel(val any) (*model, error) {
+func (r *registry) parseModel(val any) (*Model, error) {
 	typ := reflect.TypeOf(val)
 	//限制输入
 	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
@@ -108,8 +108,8 @@ func (r *registry) parseModel(val any) (*model, error) {
 	typ = typ.Elem()
 	//获取字段数量
 	numField := typ.NumField()
-	fields := make(map[string]*field, numField)
-	columns := make(map[string]*field, numField)
+	fields := make(map[string]*Field, numField)
+	columns := make(map[string]*Field, numField)
 	//解析字段名作为列名
 	for i := 0; i < numField; i++ {
 		fdType := typ.Field(i)
@@ -122,11 +122,11 @@ func (r *registry) parseModel(val any) (*model, error) {
 		if colName == "" {
 			colName = TransferName(fdType.Name)
 		}
-		fd := &field{
-			goName:  fdType.Name,
-			colName: colName,
-			typ:     fdType.Type,
-			offset:  fdType.Offset,
+		fd := &Field{
+			GoName:  fdType.Name,
+			ColName: colName,
+			Typ:     fdType.Type,
+			Offset:  fdType.Offset,
 		}
 		//都需要相同的结果那么久提取出来
 		fields[fdType.Name] = fd
@@ -139,34 +139,34 @@ func (r *registry) parseModel(val any) (*model, error) {
 	if tableName == "" {
 		tableName = TransferName(typ.Name())
 	}
-	return &model{
-		tableName: tableName,
-		fieldMap:  fields,
-		columnMap: columns,
+	return &Model{
+		TableName: tableName,
+		FieldMap:  fields,
+		ColumnMap: columns,
 	}, nil
 }
 
 //parseModel 不使用注册中心
 //func parseModel(entity any) (*model, error) {
-//	typ := reflect.TypeOf(entity)
+//	Typ := reflect.TypeOf(entity)
 //	//限制输入
-//	if typ.Kind() != reflect.Ptr || typ.Elem().Kind() != reflect.Struct {
+//	if Typ.Kind() != reflect.Ptr || Typ.Elem().Kind() != reflect.Struct {
 //		return nil, errs.ErrPointerOnly
 //	}
-//	typ = typ.Elem()
+//	Typ = Typ.Elem()
 //	//获取字段数量
-//	numField := typ.NumField()
-//	fieldMap := make(map[string]*field, numField)
+//	numField := Typ.NumField()
+//	FieldMap := make(map[string]*Field, numField)
 //	//解析字段名作为列名
 //	for i := 0; i < numField; i++ {
-//		fdType := typ.Field(i)
-//		fieldMap[fdType.Name] = &field{
-//			colName: TransferName(fdType.Name),
+//		fdType := Typ.Field(i)
+//		FieldMap[fdType.Name] = &Field{
+//			ColName: TransferName(fdType.Name),
 //		}
 //	}
 //	return &model{
-//		tableName: TransferName(typ.Name()),
-//		fieldMap:    fieldMap,
+//		TableName: TransferName(Typ.Name()),
+//		FieldMap:    FieldMap,
 //	}, nil
 //}
 func TransferName(name string) string {

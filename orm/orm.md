@@ -877,7 +877,7 @@ func TestSqlMock(t *testing.T) {
 
 现在需要让ORM和sql包结合。
 
-###### 发起查询
+##### 发起查询
 
 发起查询就是在selector的Get和GetMulti使用sql.DB发起查询。单行数据使用QueryRowContext,多行数据使用QueryContext。那么在实现时出现的问题就是db从哪来，*T如何转化。
 
@@ -911,7 +911,430 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 
 那么封装完成后如何连接数据库？
 
-那当然是新建一个
+那当然是新建一个方法Open来让用户打开数据库。
+
+```go
+func Open(driver string, dst string, opts ...DBOption) (*DB,error){
+   db, err := sql.Open(driver, dst)
+   if err != nil {
+      return nil,err
+   }
+   return &DB{
+      r:&registry{},
+      db:db,
+   }, err
+}
+```
+
+实际上用户可能自己就创建了sql.DB,我们要允许用户直接使用sql.DB创建我们的DB，所以增加一个OpenDB方法，同时把Open方法改造一下，让它使用OpenDB。且不再需要以前的NewDB。
+
+```go
+func Open(driver string, dst string, opts ...DBOption) (*DB, error) {
+   db, err := sql.Open(driver, dst)
+   if err != nil {
+      return nil, err
+   }
+   return OpenDB(db,opts...)
+}
+
+func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
+   res := &DB{
+      r:  &registry{},
+      db: db,
+   }
+   for _, opt := range opts {
+      opt(res)
+   }
+   return res, nil
+}
+```
+
+那么之前使用sql.DB的地方都要转换成DB下的sql.DB。
+
+##### 结果集构造(即转化为*T)
+
+首先new一个T出来，然后给T中的每个字段赋值。
+
+那么如何赋值？
+
+就需要用到反射和元数据。
+
+如果我们使用Scan取出数据之后用反射来set结构体的值。
+
+```go
+var vals []any
+row.Scan(&vals[0], &vals[1], &vals[2])
+//想办法把vals装进结构体
+t := new(T)
+tpValue := reflect.ValueOf(t)
+//如何把vals与Name对应起来？
+//两个问题
+//类型要匹配
+//顺序要匹配
+tpValue.FieldByName("Name").Set(reflect.ValueOf(vals[0]))
+```
+
+有两个问题：顺序要匹配；类型要匹配；如果用户更改一下查询参数的顺序怎么办。
+
+发现QueryContext的返回值有一个Column方法可以返回列的名字，而QueryRowContext没有，那么在Get中也要使用QueryContext方法来获取列，因为有了列名，就可以利用反射来设置数据了。
+
+顺序匹配问题：使用Column返回的列名来匹配就可以。
+
+类型匹配问题：如上述代码，我们怎么知道具体的类型，因为需要知道具体的类型才能赋值，query读出来的全是string，而不是使用any。方案：在field中维护一个reflect.Type，把类型记录下来，那么在列名匹配上之后就可以创建相应类型的数据。
+
+值如何Set:使用FieldByName需要知道字段在结构体中的名字，我们在field中维护住它即可。
+
+那么field最后如下：
+
+```go
+//field 保存字段信息
+type field struct {
+   //go中的名字
+   goName string
+   //列名
+   colName string
+   //代表字段的类型
+   typ reflect.Type
+}
+```
+
+selector的Get实现如下：
+
+```go
+func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
+   //把语句build出来
+   q, err := s.Build()
+   if err != nil {
+      return nil, err
+   }
+   //对数据库发起查询
+   row, err := s.db.db.QueryContext(ctx, q.SQL, q.Args...)
+   if err != nil {
+      return nil, err
+   }
+   //要确认有没有数据
+   if !row.Next() {
+      return nil, errs.ErrNoRows
+   }
+
+   t := new(T)
+   //获得元数据
+   meta, err := s.db.r.Get(t)
+   if err != nil {
+      return nil, err
+   }
+   //拿到列名后肯定要借助model元数据
+   cols, err := row.Columns()
+   if err != nil {
+      return nil, err
+   }
+   //判断是否列过多
+   if len(cols) > len(meta.fields) {
+      return nil, errs.ErrMultiCols
+   }
+   //vals用来存储列中的值 
+   vals := make([]any, 0, len(cols))
+   //对每列创建实例 
+   for _, c := range cols {
+      //遍历model的fields字段来找到对应的列 
+      for _, fd := range meta.fields {
+         if fd.colName == c {
+            //反射创建了新的实例
+            //这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
+            val := reflect.New(fd.typ)
+            vals = append(vals, val.Interface())
+         }
+      }
+   }
+   //把列的值放入vals中 
+   row.Scan(vals...)
+   tpValue := reflect.ValueOf(t)
+   //把值从vals中取出来给T赋值 
+   for i, c := range cols {
+      for _, fd := range meta.fields {
+         if fd.colName == c {
+             //由于new(T)返回的是*T所以要对tpValue取Elem 
+            tpValue.Elem().FieldByName(fd.goName).Set(reflect.ValueOf(vals[i]).Elem())
+         }   
+      }
+   }
+   return t, nil
+}
+```
+
+总结：使用reflect构造结果集就是，创建一串盒子，把值从字段中取出来放入盒子，再把值从盒子中取出来放入实例中。
+
+###### 踩坑
+
+使用sqlmock来测试一定要整个一起测试，而不能测试单个用例否则会出现query error。
+
+###### 优化
+
+1.因为我们在构造结果集时使用了循环，而循环效率是比较低的，可以在Model再维持一个columnMap列名到字段定义的映射，那么相应的就要在registry的parseModel中与fieldMap的构造相同，同样构造一个columnMap。有了columnMap在构造结果集时就不用循环去遍历字段看有没有了，只需要使用ok来判断。
+
+2.我们对数据的操作，一会使用interface,一会使用reflect.ValueOf，可以直接把值缓存住就可以吧reflect.ValueOf(vals[i]).Elem()变更为缓存住的值。
+
+```go
+func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
+   q, err := s.Build()
+   if err != nil {
+      return nil, err
+   }
+   row, err := s.db.db.QueryContext(ctx, q.SQL, q.Args...)
+   if err != nil {
+      return nil, err
+   }
+   //要确认有没有数据
+   if !row.Next() {
+      return nil, errs.ErrNoRows
+   }
+
+   t := new(T)
+   //获得元数据
+   meta, err := s.db.r.Get(t)
+   if err != nil {
+      return nil, err
+   }
+   //拿到列名后肯定要借助model元数据
+   cols, err := row.Columns()
+   if err != nil {
+      return nil, err
+   }
+   vals := make([]any, 0, len(cols))
+   valElem := make([]reflect.Value, 0, len(cols))
+   for _, c := range cols {
+      fd, ok := s.model.columnMap[c]
+      if !ok {
+         //说明根本没有这个列，查错了
+         return nil, errs.NewErrUnknownColumn(c)
+      }
+      //反射创建了新的实例
+      //这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
+      val := reflect.New(fd.typ)
+      vals = append(vals, val.Interface())
+      valElem = append(valElem, val.Elem())
+   }
+   //判断是否列过多
+   if len(cols) > len(meta.fieldMap) {
+      return nil, errs.ErrMultiCols
+   }
+   err = row.Scan(vals...)
+   if err != nil {
+      return nil, err
+   }
+   tpValue := reflect.ValueOf(t)
+   for i, c := range cols {
+      fd, ok := s.model.columnMap[c]
+      if !ok {
+         //说明根本没有这个列，查错了
+         return nil, errs.NewErrUnknownColumn(c)
+      }
+      tpValue.Elem().FieldByName(fd.goName).Set(valElem[i])
+   }
+   return t, nil
+}
+```
+
+##### 处理结果集API定义
+
+reflect和unsafe设置值比较起来差不多，集成一个API，让用户可以自己选择使用Unsafe还是reflect。
+
+有了valuer在select中把valuer创建一下直接set就可以了。
+
+那么怎么把tp和valuer关联到一起。使用一个函数式的工厂模式。creator
+
+那么creator又从哪来，和
+
+```go
+//Value 不在函数里面传entity，而是在创建Value时传入
+//也可以使用在函数里传入entity的设计
+type Value interface {
+   SetColumns(row sql.Rows) error
+}
+type Creator func(entity any)Value
+```
+
+###### reflect
+
+reflectValue实现Value，把selector中使用reflect处理结果集的代码复制到Value中。
+
+之后就需要重构了，先把return更改一下，没有了selector，那么元数据就没有地方获取，那我就在reflectValue中维持model。而model是私有的，在internal中得不到，那么就将model改为Model作为公有的，其中的字段自然也要改为共有的，自然field也要改为共有的。
+
+没有了t,tpValue := reflect.ValueOf(t)自然就不能用了，那么t自然就要在reflectValue维持。
+
+#### Unsafe
+
+要理解Unsafe就要理解go的内存布局。需要掌握
+
++ 计算地址
++ 计算偏移量
++ 直接操作内存
+
+##### 输出偏移
+
+接收结构体输出偏移
+
+```go
+func PrintFieldOffset(entity any) {
+   tp := reflect.TypeOf(entity)
+   for i := 0; i < tp.NumField(); i++ {
+      val := tp.Field(i)
+      fmt.Println(val.Name, "offset:", val.Offset)
+   }
+}
+```
+
+可以发现
+
+```go
+type User struct {
+   name    string
+   age     int32
+   alias   []byte
+   address string
+}
+```
+
+偏移为：
+
+name offset: 0
+age offset: 16
+alias offset: 24 为什么不是20而是24？
+address offset: 48
+
+因为go每一次访问都是按照字长的倍数来访问的，在32位机器上就是按照4个字节，在64位机器上就是按照8个字节，而age后的4个字节装不下alias所以在下一个字长开始装[]byte。所以我们在age后加字长少于四个字节的结构alias的offset不会变。
+
+##### 使用Unsafe读写字段
+
+注意点：unsafe 操作的是内存，本质上是对象的起始地址。
+
+读：\*(\*T)(ptr)，T 是目标类型，如果类型不知道，只能拿到反射的 Type，那么可以用reflect.NewAt(typ, ptr).Elem()。
+
+写：\*(\*T)(ptr) = T，T 是目标类型。
+
+ptr 是字段偏移量：
+
+ptr = 结构体起始地址 + 字段偏移量
+
+###### 使用Unsafe读取结构体字段
+
+为了契合orm框架UnsafeAccessor维持一个mapstring]fieldMeta和结构体的起始地址,fieldMeta维持字段的类型和偏移量。
+
+```go
+type UnsafeAccessor struct {
+   fields  map[string]fieldMeta
+   address unsafe.Pointer
+}
+type fieldMeta struct {
+	typ    reflect.Type
+	Offset uintptr
+}
+//NewUnsafeAccessor entity是结构体指针
+func NewUnsafeAccessor(entity any) *UnsafeAccessor {
+	typ := reflect.TypeOf(entity)
+	typ = typ.Elem()
+	numField := typ.NumField()
+	fields := make(map[string]fieldMeta, numField)
+	for i := 0; i < numField; i++ {
+		fd := typ.Field(i)
+		fields[fd.Name] = fieldMeta{
+			Offset: fd.Offset,
+			typ:    fd.Type,
+		}
+	}
+	val := reflect.ValueOf(entity)
+	return &UnsafeAccessor{
+		fields: fields,
+		//不直接用UnsafeAddr，因为它对应的地址不是稳定的，Gc之后地址会变化
+		//UnsafePointer会帮助维持指针
+		address: val.UnsafePointer(),
+	}
+}
+```
+
+###### 为Accessor实现增删改查
+
+读：Field方法，用来查询field。
+
+reflect.NewAt(fd.typ, unsafe.Pointer(fdAddress)).Elem().Interface()：就是我知道地址在哪，把地址解释成了一个对象，这个对象其实是你真实类型的指针，所以要取个Elem，再用Interface转换成值。
+
+```go
+func (u *UnsafeAccessor) Field(field string) (any, error) {
+   fd, ok := u.fields[field]
+   if !ok {
+      return nil, errors.New("非法字段")
+   }
+   //这样不能加，需要对unsafePointer进行转化
+   //fdAddress:=u.address+fd.Offset
+   fdAddress := uintptr(u.address) + fd.Offset
+   //如果知道类型那么就
+   //用(*)(*int)(unsafe.Pointer(fdAddress))来读
+   //不知道类型
+   return reflect.NewAt(fd.typ, unsafe.Pointer(fdAddress)).Elem().Interface(), nil
+}
+```
+
+写：set方法。 
+
+同样的不知道确切类型就用NewAt创建出来后给它Set。
+
+###### Unsafe.Pointer和uintptr的区别
+
+unsafe.Pointer：是go层面上的指针，GC会维护unsafe.Pointer的值
+
+uintptr:直接就只一个数字，代表内存地址，在GC后会变化，我们在fieldMeta中使用这个是因为代表偏移量。使用uint也可以。
+
+##### unsafe应用到结果集处理
+
+首先可以预料到T本身还是需要reflect来构造，里面的字段可以用unsafe来操作。
+
+现在我们就是将它和 Scan 方法集成在一起：
+
+• 计算字段偏移量
+
+• 计算对象起始地址
+
+• 字段真实地址=对象起始地址 + 字段偏移量
+
+• reflect.NewAt 在特定地址创建对象
+
+• 调用 Scan。不再需要set步骤，因为scan本身就是拿到东西填入，有了偏移量就可以直接scan。
+
+现在就是使用unsafe来把vals建好，scan就相当于Set操作。
+
+在计算地址时，需要偏移量，那么只能在field结构体中加上偏移量，在创建时计算。
+
+对象的起始地址就在创建T时计算。
+
+```go
+t := new(T)
+
+if err != nil {
+   return nil, err
+}
+//拿到列名后肯定要借助model元数据
+cols, err := row.Columns()
+if err != nil {
+   return nil, err
+}
+vals := make([]any, 0, len(cols))
+address := reflect.ValueOf(t).UnsafePointer()
+for _, c := range cols {
+   fd, ok := s.model.ColumnMap[c]
+   if !ok {
+      return nil, errs.NewErrUnknownColumn(c)
+   }
+
+   fdAddress := unsafe.Pointer(uintptr(address) + fd.Offset)
+   val := reflect.NewAt(fd.Typ, fdAddress)
+   vals = append(vals, val.Interface())
+}
+row.Scan(vals)
+```
+
+现在就是T已经建好了，把数据都填进去。就是把箱子一开始就放在了正确的位置。
+
+
 
 #### 事务API
 
