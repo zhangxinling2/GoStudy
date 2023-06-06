@@ -1,6 +1,7 @@
-package orm
+package model
 
 import (
+	"GoStudy/orm"
 	"GoStudy/orm/internal/errs"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -15,12 +16,12 @@ func TestParseModel(t *testing.T) {
 	}{
 		{
 			name:    "test model",
-			entity:  TestModel{},
+			entity:  orm.TestModel{},
 			wantErr: errs.ErrPointerOnly,
 		},
 		{
 			name:   "test model ptr",
-			entity: &TestModel{},
+			entity: &orm.TestModel{},
 			wantRes: &Model{
 				TableName: "test_model",
 				FieldMap: map[string]*Field{
@@ -52,7 +53,7 @@ func TestParseModel(t *testing.T) {
 			},
 		},
 	}
-	r := &registry{}
+	r := &orm.registry{}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			m, err := r.Get(tc.entity)

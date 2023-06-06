@@ -1156,11 +1156,223 @@ type Creator func(entity any)Value
 
 ###### reflect
 
-reflectValue实现Value，把selector中使用reflect处理结果集的代码复制到Value中。
+reflectValue实现Value，把selector中使用reflect处理结果集的代码复制到unsafeReflect的setColumns中。
 
 之后就需要重构了，先把return更改一下，没有了selector，那么元数据就没有地方获取，那我就在reflectValue中维持model。而model是私有的，在internal中得不到，那么就将model改为Model作为公有的，其中的字段自然也要改为共有的，自然field也要改为共有的。
 
 没有了t,tpValue := reflect.ValueOf(t)自然就不能用了，那么t自然就要在reflectValue维持。
+
+```go
+type reflectValue struct {
+   model *orm.Model
+   //T的指针
+   val any
+}
+var _ Creator = NewReflectValue
+
+func NewReflectValue(model *orm.Model, val any) Value {
+	return &reflectValue{
+		model: model,
+        val:   val,
+	}
+}
+func (r *reflectValue) SetColumns(row sql.Rows) error {
+	//得到列，就可以在之后得到列名
+	cols, err := row.Columns()
+	if err != nil {
+		return err
+	}
+	vals := make([]any, 0, len(cols))
+	row.Scan(vals)
+	valElem := make([]reflect.Value, 0, len(cols))
+	for _, c := range cols {
+		//没有了selector，那么元数据从哪来？
+		fd, ok := r.model.ColumnMap[c]
+		if !ok {
+			//说明根本没有这个列，查错了
+			return errs.NewErrUnknownColumn(c)
+		}
+		//反射创建了新的实例
+		//这里创建的时原本类型的指针 例如fd.typ=int那么val就是int的指针
+		val := reflect.New(fd.Typ)
+		vals = append(vals, val.Interface())
+		valElem = append(valElem, val.Elem())
+	}
+	//判断是否列过多
+	if len(cols) > len(r.model.FieldMap) {
+		return errs.ErrMultiCols
+	}
+	//把值传入vals后再放入t
+	err = row.Scan(vals...)
+	if err != nil {
+		return err
+	}
+	tpValue := reflect.ValueOf(r.val)
+	for i, c := range cols {
+		fd, ok := r.model.ColumnMap[c]
+		if !ok {
+			//说明根本没有这个列，查错了
+			return errs.NewErrUnknownColumn(c)
+		}
+		tpValue.Elem().FieldByName(fd.GoName).Set(valElem[i])
+	}
+	return nil
+}
+```
+
+###### unsafe
+
+unsafeValue实现value,也是把selector中使用unsafe处理结果集的代码复制到unsafeValue的setColumns中。同样的需要维持model和T。同样的修改返回值，修改一下中间代码。
+
+```go
+type unsafeValue struct {
+   model *orm.Model
+   //T的指针
+   val any
+}
+var _ Creator = NewUnsafeValue
+func NewUnsafeValue(model *orm.Model, val any) Value {
+	return &unsafeValue{
+		model: model,
+		val:  val,
+	}
+}
+func (u *unsafeValue) SetColumns(row sql.Rows) error {
+   //拿到列名后肯定要借助model元数据
+   cols, err := row.Columns()
+   if err != nil {
+      return err
+   }
+   vals := make([]any, 0, len(cols))
+   address := reflect.ValueOf(u.val).UnsafePointer()
+   for _, c := range cols {
+      fd, ok := u.model.ColumnMap[c]
+      if !ok {
+         return errs.NewErrUnknownColumn(c)
+      }
+
+      fdAddress := unsafe.Pointer(uintptr(address) + fd.Offset)
+      val := reflect.NewAt(fd.Typ, fdAddress)
+      vals = append(vals, val.Interface())
+   }
+   row.Scan(vals)
+   return nil
+}
+```
+
+###### 测试
+
+也要用sqlmock测试，使用NewRegistry得到一个注册中心，在注册中心注册model，之后就NewReflectValue进行SetColumns操作，最后检测一下entity变化，wantEntity内容与Rows是相关的。构造rows使用函数形式来完成构建，由于构建的是sqlmock.rows，所以还需要修改，把sqlmock.Rows转变成sql.Rows。在testCases中需要定义在这个流程中需要的东西。
+
+```go
+func TestReflectValue_SetColumns(t *testing.T) {
+   testCases := []struct {
+      name    string
+      wantErr error
+
+      //一定是指针
+      entity     any
+      wantEntity any
+      row        func() *sqlmock.Rows
+   }{
+      {
+         name: "setColumn",
+
+         entity: &TestModel{},
+         wantEntity: &TestModel{
+            Id:        1,
+            FirstName: "Tom",
+            Age:       18,
+            LastName:  &sql.NullString{Valid: true, String: "Jerry"},
+         },
+         row: func() *sqlmock.Rows {
+            rows := sqlmock.NewRows([]string{"id", "first_name", "age", "last_name"})
+            rows.AddRow("1", "Tom", "18", "Jerry")
+            return rows
+         },
+      },
+      {
+         // 测试列的不同顺序
+         name:   "order",
+         entity: &TestModel{},
+         row: func() *sqlmock.Rows {
+            rows := sqlmock.NewRows([]string{"id", "last_name", "first_name", "age"})
+            rows.AddRow("1", "Jerry", "Tom", "18")
+            return rows
+         },
+         wantEntity: &TestModel{
+            Id:        1,
+            FirstName: "Tom",
+            Age:       18,
+            LastName:  &sql.NullString{Valid: true, String: "Jerry"},
+         },
+      },
+
+      {
+         // 测试列的不同顺序
+         name:   "partial columns",
+         entity: &TestModel{},
+         row: func() *sqlmock.Rows {
+            rows := sqlmock.NewRows([]string{"id", "last_name"})
+            rows.AddRow("1", "Jerry")
+            return rows
+         },
+         wantEntity: &TestModel{
+            Id:       1,
+            LastName: &sql.NullString{Valid: true, String: "Jerry"},
+         },
+      },
+   }
+   r := orm.NewRegistry()
+   mockDB, mock, err := sqlmock.New()
+   require.NoError(t, err)
+   for _, tc := range testCases {
+      t.Run(tc.name, func(t *testing.T) {
+         mockRows := tc.row()
+         //随便写Select 只是为了转化Row
+         mock.ExpectQuery("SELECT XX").WillReturnRows(mockRows)
+         rows, err := mockDB.Query("SELECT XX")
+         require.NoError(t, err)
+         rows.Next()
+
+         //得到元数据
+         m, err := r.Get(tc.entity)
+         require.NoError(t, err)
+         if err != nil {
+            return
+         }
+         val := NewReflectValue(m, tc.entity)
+
+         err = val.SetColumns(rows)
+         assert.Equal(t, tc.wantErr, err)
+         if err != nil {
+            return
+         }
+         assert.Equal(t, tc.wantEntity, tc.entity)
+      })
+   }
+}
+```
+
+###### benchmark测试
+
+
+
+##### select使用API
+
+允许用户自由选择unsafe或reflect,把creator维持在DB中，DB已经使用了Option模式，直接使用Option。
+
+之后在Get中先new一个T出来，然后使用注册中心的Get获取元数据。有了元数据和creator就可以使用setColumn。
+
+在引入包之后出现了循环引用的问题。
+
+package GoStudy/orm/internal/valuer
+	imports GoStudy/orm
+	imports GoStudy/orm/internal/valuer: import cycle not allowed
+
+所以只能将model新建一个model,将model放进去。同时reflect_test中还使用了registry，registry也要移到model中。
+
+
 
 #### Unsafe
 

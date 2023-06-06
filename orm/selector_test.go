@@ -2,6 +2,7 @@ package orm
 
 import (
 	"GoStudy/orm/internal/errs"
+	"GoStudy/orm/model"
 	"context"
 	"database/sql"
 	"errors"
@@ -14,7 +15,7 @@ import (
 
 func TestTransferName(t *testing.T) {
 	t.Run("TableName", func(t *testing.T) {
-		res := TransferName("TestModel")
+		res := model.TransferName("TestModel")
 		assert.Equal(t, "test_model", res)
 	})
 }

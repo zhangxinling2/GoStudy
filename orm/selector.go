@@ -2,10 +2,9 @@ package orm
 
 import (
 	"GoStudy/orm/internal/errs"
+	"GoStudy/orm/model"
 	"context"
-	"reflect"
 	"strings"
-	"unsafe"
 )
 
 //Selector TableName是为了表名
@@ -19,7 +18,7 @@ type Selector[T any] struct {
 	where []Predicate
 	args  []any
 
-	model *Model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
+	model *model.Model //有了元数据后，selector中就可以加入元数据,Build中的数据就可以使用元数据中的数据
 
 	db *DB //设计出DB后，在selector中加入DB
 }
@@ -159,62 +158,17 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	if !row.Next() {
 		return nil, errs.ErrNoRows
 	}
-
-	t := new(T)
-
+	tp := new(T)
+	meta, err := s.db.r.Get(tp)
 	if err != nil {
 		return nil, err
 	}
-	//拿到列名后肯定要借助model元数据
-	cols, err := row.Columns()
+	val := s.db.creator(meta, tp)
+	err = val.SetColumns(row)
 	if err != nil {
 		return nil, err
 	}
-	vals := make([]any, 0, len(cols))
-	address := reflect.ValueOf(t).UnsafePointer()
-	for _, c := range cols {
-		fd, ok := s.model.ColumnMap[c]
-		if !ok {
-			return nil, errs.NewErrUnknownColumn(c)
-		}
-
-		fdAddress := unsafe.Pointer(uintptr(address) + fd.Offset)
-		val := reflect.NewAt(fd.Typ, fdAddress)
-		vals = append(vals, val.Interface())
-	}
-	row.Scan(vals)
-	//valElem := make([]reflect.Value, 0, len(cols))
-	//for _, c := range cols {
-	//	fd, ok := s.model.ColumnMap[c]
-	//	if !ok {
-	//		//说明根本没有这个列，查错了
-	//		return nil, errs.NewErrUnknownColumn(c)
-	//	}
-	//	//反射创建了新的实例
-	//	//这里创建的时原本类型的指针 例如fd.Typ=int那么val就是int的指针
-	//	val := reflect.New(fd.Typ)
-	//	vals = append(vals, val.Interface())
-	//	valElem = append(valElem, val.Elem())
-	//}
-	////判断是否列过多
-	//if len(cols) > len(s.model.FieldMap) {
-	//	return nil, errs.ErrMultiCols
-	//}
-	////把值传入vals后再放入t
-	//err = row.Scan(vals...)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//tpValue := reflect.ValueOf(t)
-	//for i, c := range cols {
-	//	fd, ok := s.model.ColumnMap[c]
-	//	if !ok {
-	//		//说明根本没有这个列，查错了
-	//		return nil, errs.NewErrUnknownColumn(c)
-	//	}
-	//	tpValue.Elem().FieldByName(fd.GoName).Set(valElem[i])
-	//}
-	return t, nil
+	return tp, nil
 }
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	q, err := s.Build()
