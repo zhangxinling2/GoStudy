@@ -8,7 +8,7 @@ import (
 
 type DB struct {
 	creator valuer.Creator
-	r       *model.registry
+	r       model.Registry
 	db      *sql.DB
 }
 
@@ -35,8 +35,9 @@ func Open(driver string, dst string, opts ...DBOption) (*DB, error) {
 
 func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
 	res := &DB{
-		r:  &model.registry{},
-		db: db,
+		r:       model.NewRegistry(),
+		db:      db,
+		creator: valuer.NewReflectValue,
 	}
 	for _, opt := range opts {
 		opt(res)

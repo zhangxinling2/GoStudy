@@ -72,7 +72,7 @@ type registry struct {
 	//models map[reflect.Type]*model //结构体名存在同名不同表名的需求，表名则需要元数据，所以最后选择reflect.Type
 }
 
-func NewRegistry() *registry {
+func NewRegistry() Registry {
 	return &registry{}
 }
 

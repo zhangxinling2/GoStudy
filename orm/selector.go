@@ -22,6 +22,9 @@ type Selector[T any] struct {
 
 	db *DB //设计出DB后，在selector中加入DB
 }
+type Selectable interface {
+	selectable()
+}
 
 //NewSelector 新建selector实例，自定义db
 func NewSelector[T any](db *DB) *Selector[T] {
